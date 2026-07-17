@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control de surtidos</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Control de surtidos</h1>
+      <p>Salida, seguimiento y devoluciones</p>
+    </div>
+    <div class="header-actions">
+      <button id="btnExportar" class="secondary">Exportar pedidos</button>
+      <button id="btnNuevo" class="primary">+ Nuevo surtido</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="summary">
+      <article><span id="totalHoy">0</span><small>Hoy</small></article>
+      <article><span id="totalProceso">0</span><small>En proceso</small></article>
+      <article><span id="totalFinalizados">0</span><small>Finalizados</small></article>
+      <article><span id="totalDevoluciones">0</span><small>Con devoluciones</small></article>
+    </section>
+
+    <section class="toolbar">
+      <input id="buscador" type="search" placeholder="Buscar por ID, responsable o producto" />
+      <select id="filtroEstado">
+        <option value="">Todos los estados</option>
+        <option value="EN_PROCESO">En proceso</option>
+        <option value="FINALIZADO">Finalizado</option>
+        <option value="CON_DEVOLUCION">Con devolución</option>
+      </select>
+    </section>
+
+    <section>
+      <div id="estadoConexion" class="notice">Conectando con Firebase…</div>
+      <div id="listaSurtidos" class="cards"></div>
+      <div id="sinResultados" class="empty hidden">No hay surtidos para mostrar.</div>
+    </section>
+  </main>
+
+  <dialog id="modalSurtido">
+    <form id="formSurtido" method="dialog">
+      <div class="dialog-header">
+        <div>
+          <h2>Nuevo surtido</h2>
+          <p>Agrega los productos antes de finalizar.</p>
+        </div>
+        <button type="button" class="icon-button" data-close="modalSurtido">×</button>
+      </div>
+
+      <label>
+        Responsable
+        <input id="responsable" required maxlength="80" placeholder="Nombre de quien surte" />
+      </label>
+
+      <div class="product-entry">
+        <label>
+          Clave
+          <input id="productoClave" maxlength="50" placeholder="Código o clave" />
+        </label>
+        <label class="grow">
+          Producto
+          <input id="productoNombre" maxlength="150" placeholder="Descripción" />
+        </label>
+        <label class="qty">
+          Cantidad
+          <input id="productoCantidad" type="number" min="1" value="1" />
+        </label>
+        <button id="btnAgregarProducto" type="button" class="secondary">Agregar</button>
+      </div>
+
+      <div id="productosNuevo" class="product-list"></div>
+
+      <div class="dialog-actions">
+        <button type="button" class="ghost" data-close="modalSurtido">Cancelar</button>
+        <button id="btnGuardarBorrador" type="button" class="secondary">Guardar en proceso</button>
+        <button id="btnFinalizarNuevo" type="button" class="primary">Finalizar e imprimir</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="modalDetalle">
+    <div class="dialog-header">
+      <div>
+        <h2 id="detalleId">Surtido</h2>
+        <p id="detalleFecha"></p>
+      </div>
+      <button type="button" class="icon-button" data-close="modalDetalle">×</button>
+    </div>
+
+    <div id="detalleContenido"></div>
+
+    <div class="dialog-actions wrap">
+      <button id="btnImprimir" type="button" class="secondary">Imprimir etiqueta</button>
+      <button id="btnFinalizarExistente" type="button" class="primary">Marcar finalizado</button>
+      <button id="btnAbrirDevolucion" type="button" class="danger">Registrar devolución</button>
+    </div>
+  </dialog>
+
+  <dialog id="modalDevolucion">
+    <div class="dialog-header">
+      <div>
+        <h2>Registrar devolución</h2>
+        <p id="devolucionId"></p>
+      </div>
+      <button type="button" class="icon-button" data-close="modalDevolucion">×</button>
+    </div>
+
+    <form id="formDevolucion">
+      <div id="productosDevolucion" class="return-list"></div>
+
+      <label>
+        Motivo de devolución
+        <select id="motivoDevolucion" required>
+          <option value="">Seleccionar motivo</option>
+          <option>Cliente no lo quiso</option>
+          <option>Producto incorrecto</option>
+          <option>Producto dañado</option>
+          <option>Producto incompleto</option>
+          <option>No se pudo entregar</option>
+          <option>Otro</option>
+        </select>
+      </label>
+
+      <label>
+        Observaciones
+        <textarea id="observacionesDevolucion" rows="3" maxlength="500" placeholder="Información adicional"></textarea>
+      </label>
+
+      <label class="check">
+        <input id="confirmarReingreso" type="checkbox" required />
+        Confirmo que los productos seleccionados ya fueron reincorporados en SICAR.
+      </label>
+
+      <div class="dialog-actions">
+        <button type="button" class="ghost" data-close="modalDevolucion">Cancelar</button>
+        <button type="submit" class="danger">Guardar devolución</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="templateCard">
+    <article class="card">
+      <div class="card-head">
+        <strong class="card-id"></strong>
+        <span class="status"></span>
+      </div>
+      <p class="card-date"></p>
+      <p class="card-responsable"></p>
+      <p class="card-count"></p>
+      <button class="secondary card-open">Ver detalle</button>
+    </article>
+  </template>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
