@@ -50,6 +50,11 @@
         <option value="EFECTIVO">Efectivo</option>
         <option value="TRANSFERENCIA">Transferencia</option>
       </select>
+      <select id="filtroDevolucion">
+        <option value="">Todos los pedidos</option>
+        <option value="CON_DEVOLUCION">Con devoluciones</option>
+        <option value="SIN_DEVOLUCION">Sin devoluciones</option>
+      </select>
     </section>
 
     <section>
@@ -70,7 +75,7 @@
       </div>
 
       <div class="form-grid">
-        <label class="date">
+        <label>
           Fecha
           <input id="fechaPedido" readonly />
         </label>
@@ -89,9 +94,35 @@
           <input id="nombreCliente" required maxlength="120" placeholder="Nombre completo o referencia" />
         </label>
 
-        <label class="span-2">
-          Ubicación
-          <input id="ubicacion" required maxlength="180" placeholder="Zona, dirección o punto de entrega" />
+        <fieldset class="span-2 delivery-choice">
+          <legend>Tipo de entrega</legend>
+          <label class="inline-check">
+            <input type="radio" name="tipoEntrega" value="PUNTO_ENTREGA" required />
+            Punto de entrega
+          </label>
+          <label class="inline-check">
+            <input type="radio" name="tipoEntrega" value="DOMICILIO" required />
+            Domicilio
+          </label>
+        </fieldset>
+
+        <label id="campoPuntoEntrega" class="span-2 hidden">
+          Punto de entrega
+          <select id="puntoEntrega">
+            <option value="">Seleccionar</option>
+            <option>Naucalpan</option>
+            <option>Raza</option>
+            <option>Rosario</option>
+            <option>Cofradia</option>
+            <option>Jardines</option>
+            <option>Huilango</option>
+            <option>Azotlan</option>
+          </select>
+        </label>
+
+        <label id="campoDomicilio" class="span-2 hidden">
+          Domicilio
+          <input id="ubicacion" maxlength="180" placeholder="Escribe la dirección de entrega" />
         </label>
 
         <label>
@@ -170,7 +201,7 @@
             spellcheck="false"
             inputmode="text"
           />
-          <!-- <small id="mensajeProducto" class="product-message"></small> -->
+          <small id="mensajeProducto" class="product-message"></small>
         </label>
         <label class="grow">
           Producto
@@ -184,7 +215,7 @@
           Cantidad
           <input id="productoCantidad" type="number" min="1" value="1" />
         </label>
-        <button id="btnAgregarProducto" type="button" class="secondary"><i class="fa-solid fa-plus"></i></button>
+        <button id="btnAgregarProducto" type="button" class="secondary">Agregar</button>
       </div>
 
       <div id="productosNuevo" class="product-list"></div>
@@ -218,8 +249,8 @@
       <label id="confirmacionInventarioBox" class="inventory-confirm hidden">
         <input id="confirmarSumaInventario" type="checkbox" />
         <span>
-          <strong>Devolución registrada en el sistema</strong>
-          <small>Confirma que la devolución ya fue registrada en el sistema antes de finalizar el pedido.</small>
+          <strong id="tituloConfirmacionInventario">Devolución registrada en el sistema</strong>
+          <small id="textoConfirmacionInventario">Confirma que la devolución ya fue registrada en el sistema antes de finalizar el pedido.</small>
         </span>
       </label>
 
@@ -286,7 +317,7 @@
         <strong id="cajaTotal">$0.00</strong>
       </article>
       <article>
-        <small>Devoluciones</small>
+        <small>Salidas y ajustes</small>
         <strong id="cajaDevoluciones">$0.00</strong>
       </article>
       <article>
@@ -426,12 +457,13 @@
       <p class="card-payment"></p>
       <p class="card-count"></p>
       <div class="card-actions">
-        <button type="button" class="primary card-quick-pay"><i class="fa-solid fa-cash-register"></i></button>
-        <button type="button" class="secondary card-open"><i class="fa-regular fa-eye"></i></button>
+        <button type="button" class="primary card-quick-pay">Agregar pago</button>
+        <button type="button" class="secondary card-open">Ver detalle</button>
       </div>
     </article>
   </template>
   <script src="https://kit.fontawesome.com/702f509feb.js" crossorigin="anonymous"></script>
+
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script type="module" src="app.js"></script>
 </body>

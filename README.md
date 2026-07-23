@@ -198,3 +198,37 @@ Para finalizar:
 - Si hay más productos o cantidades pendientes, el botón sigue disponible.
 - Cuando todos los productos se devuelven, el total ajustado queda en cero y el pedido se considera liquidado por devolución.
 - Un pedido totalmente devuelto puede finalizar sin solicitar un pago inexistente.
+
+## Versión 14 — Vigencia, entrega e inventario
+
+- Vigencia de apartados: 15 días.
+- Al vencer, el pedido se cancela por falta de liquidación.
+- El dinero aportado aparece como saldo positivo a favor del cliente.
+- Se muestra la instrucción de regresar productos al inventario.
+- Es obligatorio confirmar el regreso al inventario antes de finalizar.
+- Tipo de entrega: punto de entrega o domicilio.
+- Puntos: Naucalpan, Raza, Rosario, Cofradia, Jardines, Huilango y Azotlan.
+- La etiqueta incluye el vendedor.
+- Nuevo filtro: con devoluciones o sin devoluciones.
+
+
+## Versión 15 — Productos acumulados y cancelaciones en caja
+
+- Si un producto con la misma clave se agrega nuevamente al pedido, no se crea otra línea.
+- La nueva cantidad se suma automáticamente a la cantidad ya registrada.
+- Para productos sin clave, se consideran iguales cuando coinciden nombre y costo.
+- Cuando un pedido con dinero recibido se cancela, se registra una salida negativa por el total aportado.
+- La salida de cancelación usa la fecha en que el pedido fue cancelado.
+- El reporte de caja separa ingresos, devoluciones y cancelaciones.
+- El resumen muestra `Salidas y ajustes` y calcula el neto correctamente.
+
+
+## Versión 16 — Precio original y cancelación final automática
+
+- Cuando se agrega nuevamente el mismo código, únicamente se suma la cantidad.
+- El producto conserva el nombre y el precio de la primera captura.
+- Un precio diferente ingresado posteriormente no modifica las piezas ya registradas.
+- Al seleccionar `Cancelar`, el pedido cambia directamente a `Finalizado · Cancelado`.
+- Si había pagos o apartado, se genera la salida negativa en caja por el total recibido.
+- Si no había dinero recibido, se finaliza la cancelación sin crear un movimiento negativo.
+- Los apartados vencidos después de 15 días también se cancelan y finalizan automáticamente.

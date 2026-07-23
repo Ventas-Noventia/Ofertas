@@ -242,15 +242,15 @@ function diasDesdeFecha(fechaTexto) {
 function apartadoVencido(s) {
   return s.estatusPago === "APARTADO" &&
     saldoPendiente(s) > 0 &&
-    diasDesdeFecha(s.fechaPedido) > 8;
+    diasDesdeFecha(s.fechaPedido) > 15;
 }
 
 function textoVencimiento(s) {
   if (s.estatusPago !== "APARTADO" || saldoPendiente(s) <= 0) return "";
   const dias = diasDesdeFecha(s.fechaPedido);
-  if (dias > 8) return `Vencido hace ${dias - 8} día(s)`;
-  if (dias === 8) return "Vence hoy";
-  return `Quedan ${8 - dias} día(s)`;
+  if (dias > 15) return `Vencido hace ${dias - 15} día(s)`;
+  if (dias === 15) return "Vence hoy";
+  return `Quedan ${15 - dias} día(s)`;
 }
 
 async function cancelarApartadosVencidos() {
@@ -262,14 +262,25 @@ async function cancelarApartadosVencidos() {
 
   for (const s of vencidos) {
     try {
+      const dineroAportado = totalPagado(s);
+
       await updateDoc(doc(db, "surtidos", s.idFirestore), {
-        estado: "CANCELADO",
+        estado: "FINALIZADO",
+        cancelado: true,
         motivoCancelacion: "APARTADO_VENCIDO",
+        fechaCancelacion: fechaSoloDia(),
+        reversoCajaCancelacion: dineroAportado > 0,
+        saldoFavorCancelacion: dineroAportado,
+        devolucionInventarioPendiente: false,
+        productosRegresadosInventario: false,
         canceladoEn: serverTimestamp(),
+        finalizadoEn: serverTimestamp(),
         actualizadoEn: serverTimestamp(),
         historial: arrayUnion({
           tipo: "CANCELACION_AUTOMATICA",
-          detalle: "Pedido cancelado por superar los 8 días de apartado",
+          detalle: dineroAportado > 0
+            ? `Pedido cancelado y finalizado automáticamente por superar los 15 días. Salida de caja: ${moneda(dineroAportado)}.`
+            : "Pedido cancelado y finalizado automáticamente por superar los 15 días. Sin dinero recibido.",
           fechaISO: new Date().toISOString()
         })
       });
@@ -375,6 +386,38 @@ function todosLosMovimientosCaja() {
         concepto: devolucion.motivo || "Devolución"
       });
     }
+
+    const importeCancelacion = Number(
+      pedido.saldoFavorCancelacion ??
+      (
+        pedido.reversoCajaCancelacion
+          ? totalPagado(pedido)
+          : 0
+      )
+    );
+
+    if (
+      pedido.reversoCajaCancelacion &&
+      importeCancelacion > 0 &&
+      fechaISOValida(pedido.fechaCancelacion)
+    ) {
+      movimientos.push({
+        tipo: "CANCELACION",
+        fecha: pedido.fechaCancelacion,
+        folio: pedido.folio || "",
+        cliente: pedido.nombreCliente || "",
+        metodo: "CANCELACION",
+        importe: -Math.abs(importeCancelacion),
+        vendedor: pedido.vendedor || "",
+        responsable: pedido.responsable || "",
+        ubicacion: pedido.ubicacion || "",
+        estadoPedido: textoEstado(pedido.estado),
+        estatusPago: textoPago(pedido.estatusPago),
+        concepto: pedido.motivoCancelacion === "APARTADO_VENCIDO"
+          ? "Cancelación por falta de liquidación"
+          : "Cancelación de pedido"
+      });
+    }
   }
 
   return movimientos.sort((a, b) =>
@@ -416,7 +459,7 @@ function consultarCaja() {
 
   const devoluciones = Math.abs(
     movimientosCajaActuales
-      .filter(m => m.tipo === "DEVOLUCION")
+      .filter(m => ["DEVOLUCION", "CANCELACION"].includes(m.tipo))
       .reduce((sum, m) => sum + m.importe, 0)
   );
 
@@ -439,9 +482,19 @@ function consultarCaja() {
       <td>${escapeHtml(movimiento.fecha)}</td>
       <td>${escapeHtml(movimiento.folio)}</td>
       <td>${escapeHtml(movimiento.cliente)}</td>
-      <td><span class="movement-type ${movimiento.tipo.toLowerCase()}">${movimiento.tipo === "DEVOLUCION" ? "Devolución" : "Ingreso"}</span></td>
-      <td>${escapeHtml(movimiento.tipo === "DEVOLUCION" ? movimiento.concepto : metodoPagoTexto(movimiento.metodo))}</td>
-      <td class="money-cell ${movimiento.tipo === "DEVOLUCION" ? "return-amount" : ""}">${moneda(movimiento.importe)}</td>
+      <td><span class="movement-type ${movimiento.tipo.toLowerCase()}">${
+        movimiento.tipo === "DEVOLUCION"
+          ? "Devolución"
+          : movimiento.tipo === "CANCELACION"
+            ? "Cancelación"
+            : "Ingreso"
+      }</span></td>
+      <td>${escapeHtml(
+        movimiento.tipo === "INGRESO"
+          ? metodoPagoTexto(movimiento.metodo)
+          : movimiento.concepto
+      )}</td>
+      <td class="money-cell ${movimiento.tipo !== "INGRESO" ? "return-amount" : ""}">${moneda(movimiento.importe)}</td>
       <td>${escapeHtml(movimiento.vendedor)}</td>
     `;
     tbody.appendChild(fila);
@@ -482,9 +535,13 @@ function exportarCaja() {
     Fecha: m.fecha,
     Folio: m.folio,
     Cliente: m.cliente,
-    Tipo: m.tipo === "DEVOLUCION" ? "Devolución" : "Ingreso",
-    Concepto: m.tipo === "DEVOLUCION" ? m.concepto : metodoPagoTexto(m.metodo),
-    Método: m.tipo === "DEVOLUCION" ? "" : metodoPagoTexto(m.metodo),
+    Tipo: m.tipo === "DEVOLUCION"
+      ? "Devolución"
+      : m.tipo === "CANCELACION"
+        ? "Cancelación"
+        : "Ingreso",
+    Concepto: m.tipo === "INGRESO" ? metodoPagoTexto(m.metodo) : m.concepto,
+    Método: m.tipo === "INGRESO" ? metodoPagoTexto(m.metodo) : "",
     Importe: m.importe,
     Vendedor: m.vendedor,
     Responsable: m.responsable,
@@ -502,14 +559,14 @@ function exportarCaja() {
   const ingresos = efectivo + transferencia;
   const devoluciones = Math.abs(
     movimientosCajaActuales
-      .filter(m => m.tipo === "DEVOLUCION")
+      .filter(m => ["DEVOLUCION", "CANCELACION"].includes(m.tipo))
       .reduce((sum, m) => sum + m.importe, 0)
   );
   const neto = ingresos - devoluciones;
 
   const resumen = [
     { Concepto: "Ingresos", Importe: ingresos },
-    { Concepto: "Devoluciones", Importe: devoluciones },
+    { Concepto: "Salidas y ajustes", Importe: devoluciones },
     { Concepto: "Neto de caja", Importe: neto },
     { Concepto: "Efectivo", Importe: efectivo },
     { Concepto: "Transferencia", Importe: transferencia },
@@ -537,7 +594,7 @@ function imprimirCaja() {
   const ingresos = efectivo + transferencia;
   const devoluciones = Math.abs(
     movimientosCajaActuales
-      .filter(m => m.tipo === "DEVOLUCION")
+      .filter(m => ["DEVOLUCION", "CANCELACION"].includes(m.tipo))
       .reduce((sum, m) => sum + m.importe, 0)
   );
   const neto = ingresos - devoluciones;
@@ -547,8 +604,8 @@ function imprimirCaja() {
       <td>${escapeHtml(m.fecha)}</td>
       <td>${escapeHtml(m.folio)}</td>
       <td>${escapeHtml(m.cliente)}</td>
-      <td>${m.tipo === "DEVOLUCION" ? "Devolución" : "Ingreso"}</td>
-      <td>${escapeHtml(m.tipo === "DEVOLUCION" ? m.concepto : metodoPagoTexto(m.metodo))}</td>
+      <td>${m.tipo === "DEVOLUCION" ? "Devolución" : m.tipo === "CANCELACION" ? "Cancelación" : "Ingreso"}</td>
+      <td>${escapeHtml(m.tipo === "INGRESO" ? metodoPagoTexto(m.metodo) : m.concepto)}</td>
       <td style="text-align:right">${moneda(m.importe)}</td>
     </tr>
   `).join("");
@@ -582,7 +639,7 @@ function imprimirCaja() {
       <p>Generado: ${new Date().toLocaleString("es-MX")}</p>
       <div class="summary">
         <div><small>Ingresos</small><strong>${moneda(ingresos)}</strong></div>
-        <div><small>Devoluciones</small><strong>${moneda(devoluciones)}</strong></div>
+        <div><small>Salidas y ajustes</small><strong>${moneda(devoluciones)}</strong></div>
         <div><small>Neto</small><strong>${moneda(neto)}</strong></div>
         <div><small>Efectivo</small><strong>${moneda(efectivo)}</strong></div>
         <div><small>Transferencia</small><strong>${moneda(transferencia)}</strong></div>
@@ -798,7 +855,7 @@ function transicionesPermitidas(estadoActual) {
     ENTREGADO: ["FINALIZADO"],
     CON_DEVOLUCION: ["FINALIZADO"],
     FINALIZADO: [],
-    CANCELADO: []
+    CANCELADO: ["FINALIZADO"]
   };
   return mapa[estadoActual] || ["EN_PROCESO", "ENVIADO", "CON_REPARTIDOR", "ENTREGADO", "FINALIZADO", "CANCELADO"];
 }
@@ -831,6 +888,7 @@ function renderLista() {
   const filtro = $("#filtroEstado").value;
   const filtroPago = $("#filtroPago").value;
   const filtroMetodo = $("#filtroMetodo").value;
+  const filtroDevolucion = $("#filtroDevolucion").value;
 
   const filtrados = surtidos.filter(s => {
     const contenido = [
@@ -841,11 +899,16 @@ function renderLista() {
       (filtroPago === "VENCIDO" ? apartadoVencido(s) : s.estatusPago === filtroPago);
     const coincideMetodo = !filtroMetodo ||
       pagosPedido(s).some(pago => pago.metodo === filtroMetodo);
+    const tieneDevoluciones = (s.devoluciones || []).length > 0;
+    const coincideDevolucion = !filtroDevolucion ||
+      (filtroDevolucion === "CON_DEVOLUCION" && tieneDevoluciones) ||
+      (filtroDevolucion === "SIN_DEVOLUCION" && !tieneDevoluciones);
 
     return (!texto || contenido.includes(texto)) &&
       (!filtro || s.estado === filtro) &&
       coincidePago &&
-      coincideMetodo;
+      coincideMetodo &&
+      coincideDevolucion;
   });
 
   lista.innerHTML = "";
@@ -855,7 +918,10 @@ function renderLista() {
     const nodo = $("#templateCard").content.cloneNode(true);
     nodo.querySelector(".card-id").textContent = s.folio || "Sin folio";
     const status = nodo.querySelector(".status");
-    status.textContent = textoEstado(s.estado);
+    status.textContent =
+      s.estado === "FINALIZADO" && s.cancelado
+        ? "Finalizado · Cancelado"
+        : textoEstado(s.estado);
     status.classList.add(s.estado || "EN_PROCESO");
     nodo.querySelector(".card-client").textContent = s.nombreCliente || "Cliente no registrado";
     nodo.querySelector(".card-date").textContent = `Fecha: ${fechaPedidoTexto(s)}`;
@@ -932,13 +998,38 @@ function agregarProducto() {
   if (!Number.isFinite(costo) || costo <= 0) return alert("El costo debe ser mayor a cero.");
   if (!Number.isInteger(cantidad) || cantidad < 1) return alert("La cantidad debe ser un número entero mayor a cero.");
 
-  productosNuevo.push({
-    idLinea: crypto.randomUUID(),
-    clave,
-    nombre,
-    costo,
-    cantidad
+  const claveNormalizada = limpiarClaveProducto(clave);
+  const nombreNormalizado = nombre.trim().toLowerCase();
+
+  const productoExistente = productosNuevo.find(producto => {
+    const mismaClave =
+      claveNormalizada &&
+      limpiarClaveProducto(producto.clave) === claveNormalizada;
+
+    const mismoProductoSinClave =
+      !claveNormalizada &&
+      !limpiarClaveProducto(producto.clave) &&
+      String(producto.nombre || "").trim().toLowerCase() === nombreNormalizado &&
+      Number(producto.costo || 0) === costo;
+
+    return mismaClave || mismoProductoSinClave;
   });
+
+  if (productoExistente) {
+    productoExistente.cantidad =
+      Number(productoExistente.cantidad || 0) + cantidad;
+
+    // The first registered name and price are preserved.
+    // Only the quantity is accumulated when the same product is scanned again.
+  } else {
+    productosNuevo.push({
+      idLinea: crypto.randomUUID(),
+      clave,
+      nombre,
+      costo,
+      cantidad
+    });
+  }
 
   $("#productoClave").value = "";
   $("#productoNombre").value = "";
@@ -950,10 +1041,26 @@ function agregarProducto() {
 }
 
 function validarPedido() {
+  const tipoEntrega = document.querySelector('input[name="tipoEntrega"]:checked')?.value;
+
+  if (!tipoEntrega) {
+    alert("Selecciona si la entrega es en punto de entrega o domicilio.");
+    return false;
+  }
+  if (tipoEntrega === "PUNTO_ENTREGA" && !$("#puntoEntrega").value) {
+    alert("Selecciona el punto de entrega.");
+    $("#puntoEntrega").focus();
+    return false;
+  }
+  if (tipoEntrega === "DOMICILIO" && !$("#ubicacion").value.trim()) {
+    alert("Escribe el domicilio de entrega.");
+    $("#ubicacion").focus();
+    return false;
+  }
+
   const campos = [
     ["tipoOperacion", "Selecciona Bazar o Almacén."],
     ["nombreCliente", "Escribe el nombre del cliente."],
-    ["ubicacion", "Escribe la ubicación."],
     ["responsable", "Selecciona al responsable."],
     ["vendedor", "Escribe el nombre del vendedor."],
     ["estatusPago", "Selecciona el estatus de pago."]
@@ -1013,7 +1120,11 @@ async function guardarPedido(imprimir) {
     fechaPedido: $("#fechaPedido").value,
     tipoOperacion,
     nombreCliente: $("#nombreCliente").value.trim(),
-    ubicacion: $("#ubicacion").value.trim(),
+    tipoEntrega: document.querySelector('input[name="tipoEntrega"]:checked').value,
+    puntoEntrega: $("#puntoEntrega").value,
+    ubicacion: document.querySelector('input[name="tipoEntrega"]:checked').value === "PUNTO_ENTREGA"
+      ? $("#puntoEntrega").value
+      : $("#ubicacion").value.trim(),
     responsable: $("#responsable").value,
     vendedor: $("#vendedor").value.trim(),
     estatusPago,
@@ -1070,9 +1181,14 @@ function abrirDetalle(s) {
   $("#detalleContenido").innerHTML = `
     <div class="detail-meta">
       <div><small>Cliente</small><strong>${escapeHtml(s.nombreCliente || "No registrado")}</strong></div>
+      <div><small>Tipo de entrega</small><strong>${s.tipoEntrega === "PUNTO_ENTREGA" ? "Punto de entrega" : s.tipoEntrega === "DOMICILIO" ? "Domicilio" : "No registrado"}</strong></div>
       <div><small>Ubicación</small><strong>${escapeHtml(s.ubicacion || "No registrada")}</strong></div>
       <div><small>Nomenclatura</small><strong>${s.tipoOperacion === "ALM" ? "Almacén" : s.tipoOperacion === "BAZ" ? "Bazar" : "Anterior"}</strong></div>
-      <div><small>Estado</small><strong>${textoEstado(s.estado)}</strong></div>
+      <div><small>Estado</small><strong>${
+        s.estado === "FINALIZADO" && s.cancelado
+          ? "Finalizado · Cancelado"
+          : textoEstado(s.estado)
+      }</strong></div>
       <div><small>Pago</small><strong>${textoPago(s.estatusPago)}</strong></div>
       <div><small>Total original</small><strong>${moneda(s.total || totalPedido(s.productos))}</strong></div>
       <div><small>Ajustes por devolución</small><strong class="return-amount">-${moneda(importeDevoluciones(s))}</strong></div>
@@ -1080,6 +1196,12 @@ function abrirDetalle(s) {
       <div><small>Total pagado</small><strong>${moneda(totalPagado(s))}</strong></div>
       <div><small>Saldo pendiente</small><strong>${moneda(saldoPendiente(s))}</strong></div>
       <div><small>Saldo a favor</small><strong>${moneda(saldoFavor(s))}</strong></div>
+      ${s.motivoCancelacion === "APARTADO_VENCIDO" ? `
+        <div class="span-detail cancellation-credit">
+          <small>Cancelación por falta de liquidación</small>
+          <strong>Saldo positivo a favor del cliente: ${moneda(Number(s.saldoFavorCancelacion ?? totalPagado(s)))}</strong>
+          <p>Regresa todos los productos de este pedido al inventario y confirma la acción para finalizar.</p>
+        </div>` : ""}
       <div><small>Vigencia del apartado</small><strong class="${apartadoVencido(s) ? "overdue-text" : ""}">${escapeHtml(textoVencimiento(s) || "No aplica")}</strong></div>
       <div><small>Responsable</small><strong>${escapeHtml(s.responsable || "No registrado")}</strong></div>
       <div><small>Vendedor</small><strong>${escapeHtml(s.vendedor || "No registrado")}</strong></div>
@@ -1124,9 +1246,27 @@ function abrirDetalle(s) {
     s.estatusPago === "PAGADO" || saldoPendiente(s) <= 0 || ["CANCELADO", "FINALIZADO"].includes(s.estado)
   );
 
-  const requiereRevisionInventario = tieneDevolucionesPendientesRevision(s);
+  const cancelacionVencidaPendiente =
+    s.motivoCancelacion === "APARTADO_VENCIDO" &&
+    s.devolucionInventarioPendiente !== false &&
+    !s.productosRegresadosInventario;
+
+  const requiereRevisionInventario =
+    tieneDevolucionesPendientesRevision(s) || cancelacionVencidaPendiente;
+
   const cajaInventario = $("#confirmacionInventarioBox");
   const checkInventario = $("#confirmarSumaInventario");
+
+  if (cancelacionVencidaPendiente) {
+    $("#tituloConfirmacionInventario").textContent = "Productos regresados al inventario";
+    $("#textoConfirmacionInventario").textContent =
+      "Confirma que todos los productos del pedido cancelado ya fueron regresados al inventario.";
+  } else {
+    $("#tituloConfirmacionInventario").textContent = "Devolución registrada en el sistema";
+    $("#textoConfirmacionInventario").textContent =
+      "Confirma que la devolución ya fue registrada en el sistema antes de finalizar el pedido.";
+  }
+
   cajaInventario.classList.toggle("hidden", !requiereRevisionInventario);
   checkInventario.checked = false;
 
@@ -1138,7 +1278,13 @@ function actualizarConfirmacionInventarioPorEstado() {
   if (!surtidoActual) return;
   const caja = $("#confirmacionInventarioBox");
   const nuevoEstado = $("#cambiarEstado").value;
-  const requiere = tieneDevolucionesPendientesRevision(surtidoActual);
+  const requiere =
+    tieneDevolucionesPendientesRevision(surtidoActual) ||
+    (
+      surtidoActual.motivoCancelacion === "APARTADO_VENCIDO" &&
+      surtidoActual.devolucionInventarioPendiente !== false &&
+      !surtidoActual.productosRegresadosInventario
+    );
 
   caja.classList.toggle("hidden", !requiere);
   caja.classList.toggle("required-now", requiere && nuevoEstado === "FINALIZADO");
@@ -1149,7 +1295,14 @@ async function cambiarEstado() {
   const nuevoEstado = $("#cambiarEstado").value;
   if (!nuevoEstado) return;
 
-  if (nuevoEstado === "FINALIZADO" && saldoPendiente(surtidoActual) > 0.009) {
+  const cancelacionPorVencimiento =
+    surtidoActual.motivoCancelacion === "APARTADO_VENCIDO";
+
+  if (
+    nuevoEstado === "FINALIZADO" &&
+    saldoPendiente(surtidoActual) > 0.009 &&
+    !cancelacionPorVencimiento
+  ) {
     alert(
       `No puedes finalizar la venta porque todavía existe un saldo pendiente de ${moneda(saldoPendiente(surtidoActual))}. ` +
       "Registra los pagos necesarios hasta liquidar el total ajustado del pedido."
@@ -1158,11 +1311,20 @@ async function cambiarEstado() {
   }
 
   const requiereConfirmacionInventario =
-    nuevoEstado === "FINALIZADO" && tieneDevolucionesPendientesRevision(surtidoActual);
+    nuevoEstado === "FINALIZADO" && (
+      tieneDevolucionesPendientesRevision(surtidoActual) ||
+      (
+        surtidoActual.motivoCancelacion === "APARTADO_VENCIDO" &&
+        surtidoActual.devolucionInventarioPendiente !== false &&
+        !surtidoActual.productosRegresadosInventario
+      )
+    );
 
   if (requiereConfirmacionInventario && !$("#confirmarSumaInventario").checked) {
     alert(
-      "Antes de finalizar debes confirmar que la devolución ya fue registrada en el sistema."
+      surtidoActual.motivoCancelacion === "APARTADO_VENCIDO"
+        ? "Antes de finalizar debes confirmar que los productos ya fueron regresados al inventario."
+        : "Antes de finalizar debes confirmar que la devolución ya fue registrada en el sistema."
     );
     $("#confirmarSumaInventario").focus();
     return;
@@ -1178,8 +1340,15 @@ async function cambiarEstado() {
       }))
     : (surtidoActual.devoluciones || []);
 
+  const esCancelacion = nuevoEstado === "CANCELADO";
+  const dineroAportadoCancelacion =
+    esCancelacion ? totalPagado(surtidoActual) : 0;
+  const estadoGuardado = esCancelacion ? "FINALIZADO" : nuevoEstado;
+
   const mensaje = nuevoEstado === "CANCELADO"
-    ? "¿Seguro que deseas cancelar este pedido?"
+    ? dineroAportadoCancelacion > 0
+      ? `¿Seguro que deseas cancelar este pedido? Se registrará una salida de caja por ${moneda(dineroAportadoCancelacion)}.`
+      : "¿Seguro que deseas cancelar este pedido?"
     : `¿Cambiar el pedido a "${textoEstado(nuevoEstado)}"?`;
 
   if (!confirm(mensaje)) return;
@@ -1188,25 +1357,89 @@ async function cambiarEstado() {
 
   try {
     await updateDoc(doc(db, "surtidos", surtidoActual.idFirestore), {
-      estado: nuevoEstado,
-      devoluciones: devolucionesActualizadas,
+      estado: estadoGuardado,
+      cancelado: esCancelacion ? true : surtidoActual.cancelado || false,
+      motivoCancelacion:
+        esCancelacion
+          ? (surtidoActual.motivoCancelacion || "CANCELACION_MANUAL")
+          : surtidoActual.motivoCancelacion || "",
+      fechaCancelacion:
+        esCancelacion
+          ? fechaSoloDia()
+          : surtidoActual.fechaCancelacion || "",
+      reversoCajaCancelacion:
+        esCancelacion
+          ? dineroAportadoCancelacion > 0
+          : surtidoActual.reversoCajaCancelacion || false,
+      saldoFavorCancelacion:
+        esCancelacion
+          ? dineroAportadoCancelacion
+          : Number(surtidoActual.saldoFavorCancelacion || 0),
+      productosRegresadosInventario:
+        nuevoEstado === "FINALIZADO" && cancelacionPorVencimiento
+          ? true
+          : surtidoActual.productosRegresadosInventario || false,
+      devolucionInventarioPendiente:
+        nuevoEstado === "FINALIZADO" && cancelacionPorVencimiento
+          ? false
+          : surtidoActual.devolucionInventarioPendiente ?? false,
       actualizadoEn: serverTimestamp(),
-      finalizadoEn: nuevoEstado === "FINALIZADO" ? serverTimestamp() : surtidoActual.finalizadoEn || null,
+      finalizadoEn:
+        estadoGuardado === "FINALIZADO"
+          ? serverTimestamp()
+          : surtidoActual.finalizadoEn || null,
       historial: arrayUnion({
         tipo: "CAMBIO_ESTADO",
-        detalle: `Estado cambiado de ${textoEstado(surtidoActual.estado)} a ${textoEstado(nuevoEstado)}`,
+        detalle: esCancelacion
+          ? dineroAportadoCancelacion > 0
+            ? `Pedido cancelado y finalizado. Salida de caja: ${moneda(dineroAportadoCancelacion)}.`
+            : "Pedido cancelado y finalizado. Sin dinero recibido."
+          : `Estado cambiado de ${textoEstado(surtidoActual.estado)} a ${textoEstado(nuevoEstado)}`,
         fechaISO: new Date().toISOString()
       })
     });
 
     surtidoActual = {
       ...surtidoActual,
-      estado: nuevoEstado,
+      estado: estadoGuardado,
       devoluciones: devolucionesActualizadas,
-      finalizadoEn: nuevoEstado === "FINALIZADO" ? new Date() : surtidoActual.finalizadoEn
+      cancelado: esCancelacion ? true : surtidoActual.cancelado || false,
+      motivoCancelacion:
+        esCancelacion
+          ? (surtidoActual.motivoCancelacion || "CANCELACION_MANUAL")
+          : surtidoActual.motivoCancelacion || "",
+      fechaCancelacion:
+        esCancelacion
+          ? fechaSoloDia()
+          : surtidoActual.fechaCancelacion || "",
+      reversoCajaCancelacion:
+        esCancelacion
+          ? dineroAportadoCancelacion > 0
+          : surtidoActual.reversoCajaCancelacion || false,
+      saldoFavorCancelacion:
+        esCancelacion
+          ? dineroAportadoCancelacion
+          : Number(surtidoActual.saldoFavorCancelacion || 0),
+      productosRegresadosInventario:
+        nuevoEstado === "FINALIZADO" && cancelacionPorVencimiento
+          ? true
+          : surtidoActual.productosRegresadosInventario || false,
+      devolucionInventarioPendiente:
+        nuevoEstado === "FINALIZADO" && cancelacionPorVencimiento
+          ? false
+          : surtidoActual.devolucionInventarioPendiente ?? false,
+      finalizadoEn:
+        estadoGuardado === "FINALIZADO"
+          ? new Date()
+          : surtidoActual.finalizadoEn
     };
-    abrirDetalle(surtidoActual);
-    mostrarResultadoModal(modalDetalle, `Estatus actualizado: ${textoEstado(nuevoEstado)}.`);
+    if (esCancelacion) {
+      modalDetalle.close();
+      renderLista();
+    } else {
+      abrirDetalle(surtidoActual);
+      mostrarResultadoModal(modalDetalle, `Estatus actualizado: ${textoEstado(nuevoEstado)}.`);
+    }
   } catch (error) {
     alert("No se pudo actualizar el estado.");
     console.error(error);
@@ -1439,6 +1672,7 @@ function imprimirEtiqueta(s) {
     <div class="print-data">
       <p><strong>Fecha:</strong> ${escapeHtml(fechaPedidoTexto(s))}</p>
       <p><strong>Cliente:</strong> ${escapeHtml(cliente)}</p>
+      <p><strong>Vendedor:</strong> ${escapeHtml(s.vendedor || "No registrado")}</p>
       <p><strong>Pago:</strong> ${escapeHtml(textoPago(s.estatusPago))}</p>
       <p><strong>Total original:</strong> ${escapeHtml(moneda(s.total || totalPedido(s.productos)))}</p>
       <p><strong>Devoluciones:</strong> -${escapeHtml(moneda(importeDevoluciones(s)))}</p>
@@ -1483,6 +1717,7 @@ function exportarPedidos() {
     Fecha: fechaPedidoTexto(s),
     Nomenclatura: s.tipoOperacion === "ALM" ? "Almacén" : s.tipoOperacion === "BAZ" ? "Bazar" : "",
     Cliente: s.nombreCliente || "",
+    "Tipo de entrega": s.tipoEntrega === "PUNTO_ENTREGA" ? "Punto de entrega" : s.tipoEntrega === "DOMICILIO" ? "Domicilio" : "",
     Ubicación: s.ubicacion || "",
     Responsable: s.responsable || "",
     Vendedor: s.vendedor || "",
@@ -1494,6 +1729,8 @@ function exportarPedidos() {
     "Total pagado": totalPagado(s),
     "Saldo pendiente": saldoPendiente(s),
     "Saldo a favor": saldoFavor(s),
+    "Saldo positivo por cancelación": Number(s.saldoFavorCancelacion || 0),
+    "Productos regresados al inventario": s.productosRegresadosInventario ? "Sí" : "No",
     "Métodos de pago": [...new Set(pagosPedido(s).map(p => metodoPagoTexto(p.metodo)))].join(", "),
     "Vencimiento apartado": textoVencimiento(s),
     Total: Number(s.total || totalPedido(s.productos)),
@@ -1567,6 +1804,24 @@ document.addEventListener("click", e => {
   if (id) document.getElementById(id).close();
 });
 
+function actualizarCamposEntrega() {
+  const tipo = document.querySelector('input[name="tipoEntrega"]:checked')?.value || "";
+  const esPunto = tipo === "PUNTO_ENTREGA";
+  const esDomicilio = tipo === "DOMICILIO";
+
+  $("#campoPuntoEntrega").classList.toggle("hidden", !esPunto);
+  $("#campoDomicilio").classList.toggle("hidden", !esDomicilio);
+  $("#puntoEntrega").required = esPunto;
+  $("#ubicacion").required = esDomicilio;
+
+  if (!esPunto) $("#puntoEntrega").value = "";
+  if (!esDomicilio) $("#ubicacion").value = "";
+}
+
+document.querySelectorAll('input[name="tipoEntrega"]').forEach(control =>
+  control.addEventListener("change", actualizarCamposEntrega)
+);
+
 $("#estatusPago").addEventListener("change", () => {
   const valor = $("#estatusPago").value;
   const apartado = valor === "APARTADO";
@@ -1586,6 +1841,10 @@ $("#btnNuevo").addEventListener("click", () => {
   $("#formSurtido").reset();
   $("#fechaPedido").value = fechaSoloDia();
   $("#estadoInicial").value = "EN_PROCESO";
+  $("#campoPuntoEntrega").classList.add("hidden");
+  $("#campoDomicilio").classList.add("hidden");
+  $("#puntoEntrega").required = false;
+  $("#ubicacion").required = false;
   productosNuevo = [];
   renderProductosNuevo();
   actualizarTotalNuevo();
@@ -1632,6 +1891,7 @@ $("#buscador").addEventListener("input", renderLista);
 $("#filtroEstado").addEventListener("change", renderLista);
 $("#filtroPago").addEventListener("change", renderLista);
 $("#filtroMetodo").addEventListener("change", renderLista);
+$("#filtroDevolucion").addEventListener("change", renderLista);
 
 cargarCatalogoProductos();
 iniciar();
