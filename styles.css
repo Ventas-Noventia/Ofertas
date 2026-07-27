@@ -47,7 +47,7 @@ label { display: grid; gap: 7px; font-size: 14px; font-weight: 650; }
 .ghost { background: transparent; color: #4d586a; }
 .notice, .empty { background: white; border: 1px dashed #cbd2dd; padding: 18px; border-radius: 12px; text-align: center; }
 .hidden { display: none !important; }
-dialog { width: min(1200px, calc(100% - 24px)); border: 0; border-radius: 18px; padding: 22px; box-shadow: 0 20px 70px rgba(0,0,0,.22); }
+dialog { width: min(900px, calc(100% - 24px)); border: 0; border-radius: 18px; padding: 22px; box-shadow: 0 20px 70px rgba(0,0,0,.22); }
 dialog::backdrop { background: rgba(20,28,42,.55); }
 .dialog-header { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .dialog-header h2 { margin: 0; }
@@ -66,7 +66,7 @@ dialog::backdrop { background: rgba(20,28,42,.55); }
 .wrap { flex-wrap: wrap; }
 .check { grid-template-columns: auto 1fr; align-items: start; margin-top: 16px; }
 .check input { width: auto; margin-top: 3px; }
-.detail-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+.detail-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
 .detail-meta div { background: #f5f7fa; border-radius: 10px; padding: 12px; }
 .detail-meta small { display: block; color: #6d7585; }
 .history { border-left: 3px solid #d7ddea; padding-left: 14px; margin-top: 18px; }
@@ -488,70 +488,9 @@ dialog { position: relative; }
   color: #9a4f00;
 }
 
-
-.secondary {
-    background: #B8E0D2;
-    color: #285943;
+.header-actions {
+  flex-wrap: wrap;
 }
-
-button.ghost {
-    background: red;
-    color: white;
+.header-actions .primary {
+  white-space: nowrap;
 }
-
-input, select, textarea{
-  padding: 6px 7px;
-}
-
-button.secondary.card-open {
-    background: #C9D6DF;
-    color: #334E68;
-}
-button.primary.card-quick-pay {
-    background: #CDB4DB;
-    color: #4A315D;
-}
-
-.card-actions {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 8px;
-}
-#estadoConexion{
-  display: none;
-}
-
-.card-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
-    flex-direction: column-reverse;
-}
-.card-payment{display: none;}
-
-.summary article{padding: 5px 17px;}
-
-.delivery-choice{
-  padding: 5px;
-}
-
-button#btnCambiarEstado{
-  background-color:#FFD6A5 ;
-  color: #794B16;
-}
-.detail-meta div {
-    background: #f5f7fa;
-    border-radius: 10px;
-    padding: 5px 12px;
-}
-
-button#btnAbrirDevolucion,
-span.status.FINALIZADO{
-  background-color: #F7C5CC;
-  color: #7C2937;
-}
-i{
-  cursor: pointer;
-}
-

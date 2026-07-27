@@ -29,6 +29,7 @@ let catalogoCargado = false;
 
 const ESTADOS = {
   EN_PROCESO: "En proceso",
+  CLASIFICADO: "Clasificado",
   ENVIADO: "Enviado",
   CON_REPARTIDOR: "Ingresado a punto de venta",
   ENTREGADO: "Entregado",
@@ -850,6 +851,7 @@ function siguienteFolio(tipo) {
 function transicionesPermitidas(estadoActual) {
   const mapa = {
     EN_PROCESO: ["ENVIADO", "CANCELADO"],
+    CLASIFICADO: ["ENTREGADO", "FINALIZADO", "CANCELADO"],
     ENVIADO: ["CON_REPARTIDOR", "CANCELADO"],
     CON_REPARTIDOR: ["ENTREGADO", "CANCELADO"],
     ENTREGADO: ["FINALIZADO"],
@@ -857,7 +859,7 @@ function transicionesPermitidas(estadoActual) {
     FINALIZADO: [],
     CANCELADO: ["FINALIZADO"]
   };
-  return mapa[estadoActual] || ["EN_PROCESO", "ENVIADO", "CON_REPARTIDOR", "ENTREGADO", "FINALIZADO", "CANCELADO"];
+  return mapa[estadoActual] || ["EN_PROCESO", "CLASIFICADO", "ENVIADO", "CON_REPARTIDOR", "ENTREGADO", "FINALIZADO", "CANCELADO"];
 }
 
 async function iniciar() {
@@ -925,7 +927,17 @@ function renderLista() {
     status.classList.add(s.estado || "EN_PROCESO");
     nodo.querySelector(".card-client").textContent = s.nombreCliente || "Cliente no registrado";
     nodo.querySelector(".card-date").textContent = `Fecha: ${fechaPedidoTexto(s)}`;
-    nodo.querySelector(".card-location").textContent = `Ubicación: ${s.ubicacion || "Sin ubicación"}`;
+    const tipoOperacionTexto =
+      s.tipoOperacion === "ALM"
+        ? "Almacén"
+        : s.tipoOperacion === "BAZ"
+          ? "Bazar"
+          : s.tipoOperacion === "VR"
+            ? "Venta rápida"
+            : "Pedido";
+
+    nodo.querySelector(".card-location").textContent =
+      `${tipoOperacionTexto} · Ubicación: ${s.ubicacion || "Sin ubicación"}`;
     const vencimiento = textoVencimiento(s);
     nodo.querySelector(".card-payment").innerHTML =
       `Pago: <strong>${escapeHtml(textoPago(s.estatusPago))}</strong> · Total ajustado: ${moneda(totalAjustadoPedido(s))} · Pagado: ${moneda(totalPagado(s))} · Saldo: ${moneda(saldoPendiente(s))}
@@ -954,7 +966,7 @@ function renderLista() {
 
   $("#totalHoy").textContent = surtidos.filter(hoyMismo).length;
   $("#totalProceso").textContent = surtidos.filter(s => s.estado === "EN_PROCESO").length;
-  $("#totalRuta").textContent = surtidos.filter(s => ["ENVIADO", "CON_REPARTIDOR"].includes(s.estado)).length;
+  $("#totalRuta").textContent = surtidos.filter(s => ["CLASIFICADO", "ENVIADO", "CON_REPARTIDOR"].includes(s.estado)).length;
   $("#totalFinalizados").textContent = surtidos.filter(s => ["ENTREGADO", "FINALIZADO"].includes(s.estado)).length;
 }
 
@@ -1041,25 +1053,29 @@ function agregarProducto() {
 }
 
 function validarPedido() {
+  const tipoOperacion = $("#tipoOperacion").value;
+  const esVentaRapida = tipoOperacion === "VR";
   const tipoEntrega = document.querySelector('input[name="tipoEntrega"]:checked')?.value;
 
-  if (!tipoEntrega) {
-    alert("Selecciona si la entrega es en punto de entrega o domicilio.");
-    return false;
-  }
-  if (tipoEntrega === "PUNTO_ENTREGA" && !$("#puntoEntrega").value) {
-    alert("Selecciona el punto de entrega.");
-    $("#puntoEntrega").focus();
-    return false;
-  }
-  if (tipoEntrega === "DOMICILIO" && !$("#ubicacion").value.trim()) {
-    alert("Escribe el domicilio de entrega.");
-    $("#ubicacion").focus();
-    return false;
+  if (!esVentaRapida) {
+    if (!tipoEntrega) {
+      alert("Selecciona si la entrega es en punto de entrega o domicilio.");
+      return false;
+    }
+    if (tipoEntrega === "PUNTO_ENTREGA" && !$("#puntoEntrega").value) {
+      alert("Selecciona el punto de entrega.");
+      $("#puntoEntrega").focus();
+      return false;
+    }
+    if (tipoEntrega === "DOMICILIO" && !$("#ubicacion").value.trim()) {
+      alert("Escribe el domicilio de entrega.");
+      $("#ubicacion").focus();
+      return false;
+    }
   }
 
   const campos = [
-    ["tipoOperacion", "Selecciona Bazar o Almacén."],
+    ["tipoOperacion", "Selecciona el tipo de operación."],
     ["nombreCliente", "Escribe el nombre del cliente."],
     ["responsable", "Selecciona al responsable."],
     ["vendedor", "Escribe el nombre del vendedor."],
@@ -1101,7 +1117,7 @@ async function guardarPedido(imprimir) {
 
   const tipoOperacion = $("#tipoOperacion").value;
   const estatusPago = $("#estatusPago").value;
-  const estado = $("#estadoInicial").value;
+  const estado = tipoOperacion === "VR" ? "FINALIZADO" : $("#estadoInicial").value;
   const total = totalPedido(productosNuevo);
   const tienePagoInicial = estatusPago !== "PENDIENTE";
   const montoInicial = estatusPago === "APARTADO"
@@ -1120,11 +1136,15 @@ async function guardarPedido(imprimir) {
     fechaPedido: $("#fechaPedido").value,
     tipoOperacion,
     nombreCliente: $("#nombreCliente").value.trim(),
-    tipoEntrega: document.querySelector('input[name="tipoEntrega"]:checked').value,
-    puntoEntrega: $("#puntoEntrega").value,
-    ubicacion: document.querySelector('input[name="tipoEntrega"]:checked').value === "PUNTO_ENTREGA"
-      ? $("#puntoEntrega").value
-      : $("#ubicacion").value.trim(),
+    tipoEntrega: tipoOperacion === "VR"
+      ? "VENTA_RAPIDA"
+      : document.querySelector('input[name="tipoEntrega"]:checked').value,
+    puntoEntrega: tipoOperacion === "VR" ? "" : $("#puntoEntrega").value,
+    ubicacion: tipoOperacion === "VR"
+      ? "Venta rápida"
+      : document.querySelector('input[name="tipoEntrega"]:checked').value === "PUNTO_ENTREGA"
+        ? $("#puntoEntrega").value
+        : $("#ubicacion").value.trim(),
     responsable: $("#responsable").value,
     vendedor: $("#vendedor").value.trim(),
     estatusPago,
@@ -1181,9 +1201,25 @@ function abrirDetalle(s) {
   $("#detalleContenido").innerHTML = `
     <div class="detail-meta">
       <div><small>Cliente</small><strong>${escapeHtml(s.nombreCliente || "No registrado")}</strong></div>
-      <div><small>Tipo de entrega</small><strong>${s.tipoEntrega === "PUNTO_ENTREGA" ? "Punto de entrega" : s.tipoEntrega === "DOMICILIO" ? "Domicilio" : "No registrado"}</strong></div>
+      <div><small>Tipo de entrega</small><strong>${
+        s.tipoEntrega === "PUNTO_ENTREGA"
+          ? "Punto de entrega"
+          : s.tipoEntrega === "DOMICILIO"
+            ? "Domicilio"
+            : s.tipoEntrega === "VENTA_RAPIDA"
+              ? "Venta rápida"
+              : "No registrado"
+      }</strong></div>
       <div><small>Ubicación</small><strong>${escapeHtml(s.ubicacion || "No registrada")}</strong></div>
-      <div><small>Nomenclatura</small><strong>${s.tipoOperacion === "ALM" ? "Almacén" : s.tipoOperacion === "BAZ" ? "Bazar" : "Anterior"}</strong></div>
+      <div><small>Tipo de operación</small><strong>${
+        s.tipoOperacion === "ALM"
+          ? "Almacén"
+          : s.tipoOperacion === "BAZ"
+            ? "Bazar"
+            : s.tipoOperacion === "VR"
+              ? "Venta rápida"
+              : "Anterior"
+      }</strong></div>
       <div><small>Estado</small><strong>${
         s.estado === "FINALIZADO" && s.cancelado
           ? "Finalizado · Cancelado"
@@ -1237,8 +1273,14 @@ function abrirDetalle(s) {
     $("#btnCambiarEstado").disabled = false;
   }
 
+  const devolucionPermitidaFinalizado =
+    s.estado === "FINALIZADO" &&
+    !s.cancelado &&
+    ["ALM", "BAZ", "VR"].includes(s.tipoOperacion);
+
   const ocultarRegistroDevolucion =
-    ["EN_PROCESO", "CANCELADO", "FINALIZADO"].includes(s.estado) ||
+    ["EN_PROCESO", "CANCELADO"].includes(s.estado) ||
+    (s.estado === "FINALIZADO" && !devolucionPermitidaFinalizado) ||
     !tieneProductosDisponiblesParaDevolver(s);
 
   $("#btnAbrirDevolucion").classList.toggle("hidden", ocultarRegistroDevolucion);
@@ -1658,7 +1700,14 @@ function imprimirEtiqueta(s) {
   if (anterior) anterior.remove();
 
   const productos = Array.isArray(s.productos) ? s.productos : [];
-  const tipoTexto = s.tipoOperacion === "ALM" ? "ALMACÉN" : s.tipoOperacion === "BAZ" ? "BAZAR" : "PEDIDO";
+  const tipoTexto =
+    s.tipoOperacion === "ALM"
+      ? "ALMACÉN"
+      : s.tipoOperacion === "BAZ"
+        ? "BAZAR"
+        : s.tipoOperacion === "VR"
+          ? "VENTA RÁPIDA"
+          : "PEDIDO";
   const cliente = s.nombreCliente || "Cliente no registrado";
   const ubicacionTexto = s.ubicacion || "Sin ubicación";
 
@@ -1715,7 +1764,13 @@ function exportarPedidos() {
   const filasPedidos = surtidos.map(s => ({
     Folio: s.folio || "",
     Fecha: fechaPedidoTexto(s),
-    Nomenclatura: s.tipoOperacion === "ALM" ? "Almacén" : s.tipoOperacion === "BAZ" ? "Bazar" : "",
+    "Tipo de operación": s.tipoOperacion === "ALM"
+      ? "Almacén"
+      : s.tipoOperacion === "BAZ"
+        ? "Bazar"
+        : s.tipoOperacion === "VR"
+          ? "Venta rápida"
+          : "",
     Cliente: s.nombreCliente || "",
     "Tipo de entrega": s.tipoEntrega === "PUNTO_ENTREGA" ? "Punto de entrega" : s.tipoEntrega === "DOMICILIO" ? "Domicilio" : "",
     Ubicación: s.ubicacion || "",
@@ -1837,25 +1892,70 @@ $("#estatusPago").addEventListener("change", () => {
   if (!apartado) $("#montoApartado").value = "";
 });
 
-$("#btnNuevo").addEventListener("click", () => {
+function configurarEstadosIniciales(tipoOperacion) {
+  const selector = $("#estadoInicial");
+  selector.innerHTML = "";
+
+  const opciones = tipoOperacion === "BAZ"
+    ? [
+        ["CLASIFICADO", "Clasificado"],
+        ["ENTREGADO", "Entregado"],
+        ["FINALIZADO", "Finalizado"]
+      ]
+    : [
+        ["EN_PROCESO", "En proceso"],
+        ["ENVIADO", "Enviado"]
+      ];
+
+  for (const [valor, texto] of opciones) {
+    const opcion = document.createElement("option");
+    opcion.value = valor;
+    opcion.textContent = texto;
+    selector.appendChild(opcion);
+  }
+}
+
+function abrirNuevoPedido(tipoOperacion) {
   $("#formSurtido").reset();
+  $("#tipoOperacion").value = tipoOperacion;
   $("#fechaPedido").value = fechaSoloDia();
-  $("#estadoInicial").value = "EN_PROCESO";
+
+  const esVentaRapida = tipoOperacion === "VR";
+  $("#modalSurtidoTitulo").textContent =
+    tipoOperacion === "ALM"
+      ? "Nuevo pedido de almacén"
+      : tipoOperacion === "BAZ"
+        ? "Nuevo pedido de bazar"
+        : "Nueva venta rápida";
+
+  configurarEstadosIniciales(tipoOperacion);
+
+  $("#bloqueTipoEntrega").classList.toggle("hidden", esVentaRapida);
   $("#campoPuntoEntrega").classList.add("hidden");
   $("#campoDomicilio").classList.add("hidden");
+  $("#campoEstadoInicial").classList.toggle("hidden", esVentaRapida);
+
+  $("#estadoInicial").required = !esVentaRapida;
   $("#puntoEntrega").required = false;
   $("#ubicacion").required = false;
+
   productosNuevo = [];
   renderProductosNuevo();
   actualizarTotalNuevo();
+
   $("#campoMontoApartado").classList.add("hidden");
   $("#campoMetodoPago").classList.add("hidden");
   $("#campoFechaPago").classList.add("hidden");
   $("#fechaPagoInicial").value = fechaSoloDia();
   mostrarMensajeProducto("");
+
   modalSurtido.showModal();
   setTimeout(() => $("#productoClave").focus(), 100);
-});
+}
+
+$("#btnAlmacen").addEventListener("click", () => abrirNuevoPedido("ALM"));
+$("#btnBazar").addEventListener("click", () => abrirNuevoPedido("BAZ"));
+$("#btnVentaRapida").addEventListener("click", () => abrirNuevoPedido("VR"));
 
 $("#btnReporteCaja").addEventListener("click", abrirReporteCaja);
 $("#btnExportar").addEventListener("click", exportarPedidos);
