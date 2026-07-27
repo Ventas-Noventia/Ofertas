@@ -241,12 +241,15 @@ function diasDesdeFecha(fechaTexto) {
 }
 
 function apartadoVencido(s) {
+  if (s.tipoOperacion === "VR" || s.estado === "FINALIZADO") return false;
+
   return s.estatusPago === "APARTADO" &&
     saldoPendiente(s) > 0 &&
     diasDesdeFecha(s.fechaPedido) > 15;
 }
 
 function textoVencimiento(s) {
+  if (s.tipoOperacion === "VR" || s.estado === "FINALIZADO") return "";
   if (s.estatusPago !== "APARTADO" || saldoPendiente(s) <= 0) return "";
   const dias = diasDesdeFecha(s.fechaPedido);
   if (dias > 15) return `Vencido hace ${dias - 15} día(s)`;
@@ -970,8 +973,22 @@ function renderLista() {
   $("#totalFinalizados").textContent = surtidos.filter(s => ["ENTREGADO", "FINALIZADO"].includes(s.estado)).length;
 }
 
+function costoEnvioNuevo() {
+  const tipoEntrega =
+    document.querySelector('input[name="tipoEntrega"]:checked')?.value || "";
+
+  if (tipoEntrega !== "DOMICILIO") return 0;
+
+  const costo = Number($("#costoEnvio").value || 0);
+  return Number.isFinite(costo) && costo > 0 ? costo : 0;
+}
+
+function totalNuevoPedido() {
+  return totalPedido(productosNuevo) + costoEnvioNuevo();
+}
+
 function actualizarTotalNuevo() {
-  $("#totalNuevo").textContent = moneda(totalPedido(productosNuevo));
+  $("#totalNuevo").textContent = moneda(totalNuevoPedido());
 }
 
 function renderProductosNuevo() {
@@ -1072,6 +1089,15 @@ function validarPedido() {
       $("#ubicacion").focus();
       return false;
     }
+
+    if (tipoEntrega === "DOMICILIO") {
+      const costoEnvio = Number($("#costoEnvio").value);
+      if (!Number.isFinite(costoEnvio) || costoEnvio < 0) {
+        alert("Escribe un costo de envío válido.");
+        $("#costoEnvio").focus();
+        return false;
+      }
+    }
   }
 
   const campos = [
@@ -1089,7 +1115,7 @@ function validarPedido() {
     }
   }
   if ($("#estatusPago").value !== "PENDIENTE" && !$("#metodoPagoInicial").value.trim()) {
-    alert("Selecciona el método del primer pago.");
+    alert("Selecciona el método de pago.");
     $("#metodoPagoInicial").focus();
     return false;
   }
@@ -1097,7 +1123,7 @@ function validarPedido() {
     alert("Agrega por lo menos un producto.");
     return false;
   }
-  const total = totalPedido(productosNuevo);
+  const total = totalNuevoPedido();
   if ($("#estatusPago").value === "APARTADO") {
     const apartado = Number($("#montoApartado").value);
     if (!Number.isFinite(apartado) || apartado <= 0) {
@@ -1118,7 +1144,9 @@ async function guardarPedido(imprimir) {
   const tipoOperacion = $("#tipoOperacion").value;
   const estatusPago = $("#estatusPago").value;
   const estado = tipoOperacion === "VR" ? "FINALIZADO" : $("#estadoInicial").value;
-  const total = totalPedido(productosNuevo);
+  const costoEnvio = tipoOperacion === "VR" ? 0 : costoEnvioNuevo();
+  const totalProductos = totalPedido(productosNuevo);
+  const total = totalProductos + costoEnvio;
   const tienePagoInicial = estatusPago !== "PENDIENTE";
   const montoInicial = estatusPago === "APARTADO"
     ? Number($("#montoApartado").value)
@@ -1153,6 +1181,8 @@ async function guardarPedido(imprimir) {
     fechaPago: pagoInicial?.fecha || "",
     pagos: pagoInicial ? [pagoInicial] : [],
     productos: productosNuevo,
+    subtotalProductos: totalProductos,
+    costoEnvio,
     total,
     estado,
     creadoEn: serverTimestamp(),
@@ -1226,6 +1256,8 @@ function abrirDetalle(s) {
           : textoEstado(s.estado)
       }</strong></div>
       <div><small>Pago</small><strong>${textoPago(s.estatusPago)}</strong></div>
+      <div><small>Subtotal de productos</small><strong>${moneda(Number(s.subtotalProductos ?? totalPedido(s.productos)))}</strong></div>
+      <div><small>Costo de envío</small><strong>${moneda(Number(s.costoEnvio || 0))}</strong></div>
       <div><small>Total original</small><strong>${moneda(s.total || totalPedido(s.productos))}</strong></div>
       <div><small>Ajustes por devolución</small><strong class="return-amount">-${moneda(importeDevoluciones(s))}</strong></div>
       <div><small>Total ajustado</small><strong>${moneda(totalAjustadoPedido(s))}</strong></div>
@@ -1723,6 +1755,8 @@ function imprimirEtiqueta(s) {
       <p><strong>Cliente:</strong> ${escapeHtml(cliente)}</p>
       <p><strong>Vendedor:</strong> ${escapeHtml(s.vendedor || "No registrado")}</p>
       <p><strong>Pago:</strong> ${escapeHtml(textoPago(s.estatusPago))}</p>
+      <p><strong>Subtotal de productos:</strong> ${escapeHtml(moneda(Number(s.subtotalProductos ?? totalPedido(s.productos))))}</p>
+      <p><strong>Costo de envío:</strong> ${escapeHtml(moneda(Number(s.costoEnvio || 0)))}</p>
       <p><strong>Total original:</strong> ${escapeHtml(moneda(s.total || totalPedido(s.productos)))}</p>
       <p><strong>Devoluciones:</strong> -${escapeHtml(moneda(importeDevoluciones(s)))}</p>
       <p><strong>Total ajustado:</strong> ${escapeHtml(moneda(totalAjustadoPedido(s)))}</p>
@@ -1778,6 +1812,8 @@ function exportarPedidos() {
     Vendedor: s.vendedor || "",
     Estado: textoEstado(s.estado),
     "Estatus de pago": textoPago(s.estatusPago),
+    "Subtotal de productos": Number(s.subtotalProductos ?? totalPedido(s.productos)),
+    "Costo de envío": Number(s.costoEnvio || 0),
     "Total original": Number(s.total || totalPedido(s.productos)),
     "Ajustes por devolución": importeDevoluciones(s),
     "Total ajustado": totalAjustadoPedido(s),
@@ -1866,16 +1902,25 @@ function actualizarCamposEntrega() {
 
   $("#campoPuntoEntrega").classList.toggle("hidden", !esPunto);
   $("#campoDomicilio").classList.toggle("hidden", !esDomicilio);
+  $("#campoCostoEnvio").classList.toggle("hidden", !esDomicilio);
   $("#puntoEntrega").required = esPunto;
   $("#ubicacion").required = esDomicilio;
+  $("#costoEnvio").required = esDomicilio;
 
   if (!esPunto) $("#puntoEntrega").value = "";
-  if (!esDomicilio) $("#ubicacion").value = "";
+  if (!esDomicilio) {
+    $("#ubicacion").value = "";
+    $("#costoEnvio").value = "0";
+  }
+
+  actualizarTotalNuevo();
 }
 
 document.querySelectorAll('input[name="tipoEntrega"]').forEach(control =>
   control.addEventListener("change", actualizarCamposEntrega)
 );
+
+$("#costoEnvio").addEventListener("input", actualizarTotalNuevo);
 
 $("#estatusPago").addEventListener("change", () => {
   const valor = $("#estatusPago").value;
@@ -1916,9 +1961,19 @@ function configurarEstadosIniciales(tipoOperacion) {
 }
 
 function abrirNuevoPedido(tipoOperacion) {
+  console.log(tipoOperacion);
+  
   $("#formSurtido").reset();
   $("#tipoOperacion").value = tipoOperacion;
   $("#fechaPedido").value = fechaSoloDia();
+  
+  if(tipoOperacion === 'VR'){
+    document.querySelector('#estatusPago option[value="APARTADO"]').hidden = true;
+    document.querySelector('#estatusPago option[value="PENDIENTE"]').hidden = true;
+  }else{
+    document.querySelector('#estatusPago option[value="APARTADO"]').hidden = false;
+    document.querySelector('#estatusPago option[value="PENDIENTE"]').hidden = false;
+  }
 
   const esVentaRapida = tipoOperacion === "VR";
   $("#modalSurtidoTitulo").textContent =
@@ -1933,6 +1988,9 @@ function abrirNuevoPedido(tipoOperacion) {
   $("#bloqueTipoEntrega").classList.toggle("hidden", esVentaRapida);
   $("#campoPuntoEntrega").classList.add("hidden");
   $("#campoDomicilio").classList.add("hidden");
+  $("#campoCostoEnvio").classList.add("hidden");
+  $("#costoEnvio").value = "0";
+  $("#costoEnvio").required = false;
   $("#campoEstadoInicial").classList.toggle("hidden", esVentaRapida);
 
   $("#estadoInicial").required = !esVentaRapida;

@@ -15,9 +15,9 @@
     <div class="header-actions">
       <button id="btnReporteCaja" class="secondary">Reporte de caja</button>
       <button id="btnExportar" class="secondary">Exportar pedidos</button>
-      <button id="btnAlmacen" class="primary">+ Almacén</button>
-      <button id="btnBazar" class="primary">+ Bazar</button>
-      <button id="btnVentaRapida" class="primary">+ Venta rápida</button>
+      <button id="btnAlmacen" class="primary" title="Venta de almacen"> <i class="fas fa-store"></i></button>
+      <button id="btnBazar" class="primary" title="Venta de bazar"><i class="fas fa-store-alt"></i></button>
+      <button id="btnVentaRapida" class="primary" title="Venta rapida"><i class="fas fa-cash-register"></i></button>
     </div>
   </header>
 
@@ -121,6 +121,11 @@
           <input id="ubicacion" maxlength="180" placeholder="Escribe la dirección de entrega" />
         </label>
 
+        <label id="campoCostoEnvio" class="hidden">
+          Costo de envío
+          <input id="costoEnvio" type="number" min="0" step="0.01" value="0" placeholder="0.00" />
+        </label>
+
         <label>
           Responsable de surtido
           <select id="responsable" required>
@@ -180,7 +185,7 @@
       <div class="product-heading">
         <div>
           <h3>Productos</h3>
-          <p class="scanner-help">Escanea o escribe la clave. El nombre se completará desde <code>inventario.json</code>.</p>
+          <p class="scanner-help">Escanea o escribe la clave.</p>
         </div>
         <span id="estadoCatalogo" class="catalog-status loading">Cargando catálogo…</span>
       </div>
@@ -197,7 +202,7 @@
             spellcheck="false"
             inputmode="text"
           />
-          <small id="mensajeProducto" class="product-message"></small>
+          <!-- <small id="mensajeProducto" class="product-message"></small> -->
         </label>
         <label class="grow">
           Producto
@@ -211,7 +216,7 @@
           Cantidad
           <input id="productoCantidad" type="number" min="1" value="1" />
         </label>
-        <button id="btnAgregarProducto" type="button" class="secondary">Agregar</button>
+        <button id="btnAgregarProducto" type="button" class="secondary"><i class="fa-solid fa-plus"></i></button>
       </div>
 
       <div id="productosNuevo" class="product-list"></div>
@@ -220,7 +225,7 @@
       <div class="dialog-actions">
         <button type="button" class="ghost" data-close="modalSurtido">Cancelar</button>
         <button id="btnGuardarBorrador" type="button" class="secondary">Guardar pedido</button>
-        <button id="btnFinalizarNuevo" type="button" class="primary">Guardar e imprimir etiqueta</button>
+        <button id="btnFinalizarNuevo" type="button" class="primary">Guardar e <i class="fas fa-print"></i></button>
       </div>
     </form>
   </dialog>
@@ -255,7 +260,7 @@
 
     <div class="dialog-actions wrap">
       <button id="btnAgregarPago" type="button" class="primary">Agregar pago</button>
-      <button id="btnImprimir" type="button" class="secondary">Imprimir etiqueta</button>
+      <button id="btnImprimir" type="button" class="secondary"><i class="fas fa-print"></i></button>
       <button id="btnAbrirDevolucion" type="button" class="danger">Registrar devolución</button>
     </div>
   </dialog>
@@ -354,7 +359,7 @@
 
     <div class="dialog-actions wrap">
       <button id="btnExportarCaja" type="button" class="secondary">Exportar caja a Excel</button>
-      <button id="btnImprimirCaja" type="button" class="primary">Imprimir reporte</button>
+      <button id="btnImprimirCaja" type="button" class="primary"><i class="fas fa-print"></i> reporte</button>
     </div>
   </dialog>
 
@@ -453,12 +458,13 @@
       <p class="card-payment"></p>
       <p class="card-count"></p>
       <div class="card-actions">
-        <button type="button" class="primary card-quick-pay">Agregar pago</button>
-        <button type="button" class="secondary card-open">Ver detalle</button>
+        <button type="button" class="primary card-quick-pay" title="Agregar pago"><i class="fas fa-money-bill-wave"></i></button>
+        <button type="button" class="secondary card-open" title="Ver detalle"><i class="fa-regular fa-eye"></i></button>
+
       </div>
     </article>
   </template>
-
+  <script src="https://kit.fontawesome.com/702f509feb.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script type="module" src="app.js"></script>
 </body>

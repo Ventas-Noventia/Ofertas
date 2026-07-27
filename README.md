@@ -232,3 +232,32 @@ Para finalizar:
 - Si había pagos o apartado, se genera la salida negativa en caja por el total recibido.
 - Si no había dinero recibido, se finaliza la cancelación sin crear un movimiento negativo.
 - Los apartados vencidos después de 15 días también se cancelan y finalizan automáticamente.
+
+
+## Versión 17 — Almacén, Bazar y Venta rápida
+
+- El botón `Nuevo pedido` se sustituyó por tres accesos: `Almacén`, `Bazar` y `Venta rápida`.
+- Los tres flujos guardan sus pagos, devoluciones, cancelaciones y movimientos en la misma caja.
+- Almacén conserva el flujo actual, pero la nomenclatura ya no se captura: se asigna automáticamente como `ALM`.
+- Bazar asigna automáticamente `BAZ` y permite los estados iniciales `Clasificado`, `Entregado` y `Finalizado`.
+- Venta rápida asigna automáticamente `VR`, oculta tipo de entrega y estatus del pedido, y se guarda directamente como finalizada.
+- Almacén y Bazar pueden registrar devoluciones aun después de estar finalizados, siempre que no estén cancelados y todavía queden piezas disponibles para devolver.
+- Las etiquetas y exportaciones identifican el tipo de operación.
+
+
+## Versión 18 — Devoluciones en venta rápida
+
+- Las ventas rápidas finalizadas también permiten registrar devoluciones.
+- La devolución solo está disponible si la venta no fue cancelada.
+- El botón se oculta cuando ya no quedan piezas disponibles para devolver.
+- Los ajustes continúan afectando la misma caja y el mismo reporte general.
+
+
+## Versión 19 — Venta rápida sin vigencia y costo de envío
+
+- La Venta rápida no participa en la vigencia automática de 15 días.
+- Como se guarda finalizada desde su creación, no muestra vencimiento ni puede cancelarse automáticamente por apartado vencido.
+- Al seleccionar entrega a domicilio aparece el campo `Costo de envío`.
+- El costo de envío se suma al subtotal de productos para calcular el total del pedido.
+- El total actualizado se utiliza en pagos, apartados, saldos, caja, etiqueta y exportación.
+- Las devoluciones descuentan el valor de los productos devueltos; el costo de envío permanece dentro del total salvo que se modifique manualmente en una versión futura.
