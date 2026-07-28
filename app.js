@@ -1866,15 +1866,11 @@ function imprimirEtiqueta(s) {
       <p><strong>Fecha:</strong> ${escapeHtml(fechaPedidoTexto(s))}</p>
       <p><strong>Cliente:</strong> ${escapeHtml(cliente)}</p>
       <p><strong>Vendedor:</strong> ${escapeHtml(s.vendedor || "No registrado")}</p>
-      //<p><strong>Pago:</strong> ${escapeHtml(textoPago(s.estatusPago))}</p>
-      //<p><strong>Subtotal de productos:</strong> ${escapeHtml(moneda(Number(s.subtotalProductos ?? totalPedido(s.productos))))}</p>
       <p><strong>Costo de envío:</strong> ${escapeHtml(moneda(Number(s.costoEnvio || 0)))}</p>
       <p><strong>Total original:</strong> ${escapeHtml(moneda(s.total || totalPedido(s.productos)))}</p>
       <p><strong>Devoluciones:</strong> -${escapeHtml(moneda(importeDevoluciones(s)))}</p>
-      //<p><strong>Total ajustado:</strong> ${escapeHtml(moneda(totalAjustadoPedido(s)))}</p>
       <p><strong>Pagado:</strong> ${escapeHtml(moneda(totalPagado(s)))}</p>
       <p><strong>Saldo:</strong> ${escapeHtml(moneda(saldoPendiente(s)))}</p>
-      //<p><strong>Método(s):</strong> ${escapeHtml([...new Set(pagosPedido(s).map(p => metodoPagoTexto(p.metodo)))].join(", ") || "No registrado")}</p>
       <p><strong>Ubicación:</strong> ${escapeHtml(ubicacionTexto)}</p>
     </div>
     <div class="print-products">
