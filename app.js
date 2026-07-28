@@ -882,9 +882,6 @@ function aplicarPermisos() {
     elemento.classList.toggle("hidden", !esAdmin);
   });
 
-  $("#usuarioNombre").textContent =
-    perfilActual?.nombre || usuarioActual?.email || "Usuario";
-
   $("#usuarioRol").textContent =
     esAdmin ? "Administrador" : "Vendedor";
 }
