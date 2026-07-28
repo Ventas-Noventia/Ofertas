@@ -1858,7 +1858,7 @@ function imprimirEtiqueta(s) {
   printArea.id = "printArea";
   printArea.innerHTML = `
     <div class="print-header">
-    <p><img src="/img/logo.JPG" alt="Noventia" style="width: 200px"/></p>
+    <p><img src="logo.JPG" alt="Noventia" style="width: 200px"/></p>
       <strong class="print-type">${escapeHtml(tipoTexto)}</strong>
       <h1>${escapeHtml(s.folio || "SIN FOLIO")}</h1>
     </div>
