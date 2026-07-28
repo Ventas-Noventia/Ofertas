@@ -7,17 +7,53 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <section id="pantallaLogin" class="login-screen">
+    <form id="formLogin" class="login-card">
+      <div class="login-brand">
+        <img src="/img/logo.JPG" alt="Noventia" class="imglogo">
+        <!-- <span class="login-mark">N</span> -->
+        <div class="text-context">
+          <h1>Control de pedidos</h1>
+          <p>Acceso al sistema</p>
+        </div>
+      </div>
+
+      <label>
+        Correo electrónico
+        <input id="loginCorreo" type="email" autocomplete="username" required placeholder="usuario@empresa.com" />
+      </label>
+
+      <label>
+        Contraseña
+        <input id="loginContrasena" type="password" autocomplete="current-password" required minlength="6" placeholder="••••••••" />
+      </label>
+
+      <p id="loginError" class="login-error hidden"></p>
+      <button id="btnIniciarSesion" type="submit" class="primary login-submit">Iniciar sesión</button>
+    </form>
+  </section>
+
+  <div id="aplicacion" class="hidden">
   <header class="topbar">
-    <div>
-      <h1>Control de pedidos</h1>
-      <p>Surtido, seguimiento, pago y devoluciones</p>
+    <div class="item-header">
+      <img src="/img/logo.JPG" alt="Noventia" class="imglogo">
+      <div>
+        <h2>Control de pedidos <p style="font-size:12px ;">Surtido, seguimiento, pago y devoluciones</p></h2>
+        
+      </div>
+      <div id="usuarioSesion" class="session-user">
+        <i class="fa-solid fa-spider fa-2x"></i>
+        <span id="usuarioNombre">Usuario</span>
+        <small id="usuarioRol"></small>
+      </div>
     </div>
     <div class="header-actions">
-      <button id="btnReporteCaja" class="secondary">Reporte de caja</button>
-      <button id="btnExportar" class="secondary">Exportar pedidos</button>
-      <button id="btnAlmacen" class="primary" title="Venta de almacen"> <i class="fas fa-store"></i></button>
+      <button id="btnReporteCaja" data-admin-only class="secondary">Reporte de caja</button> 
+      <button id="btnExportar" data-admin-only class="secondary">Exportar pedidos</button>
+      <button id="btnAlmacen" class="primary" title="Venta de almacen"><i class="fas fa-store"></i></button>
       <button id="btnBazar" class="primary" title="Venta de bazar"><i class="fas fa-store-alt"></i></button>
       <button id="btnVentaRapida" class="primary" title="Venta rapida"><i class="fas fa-cash-register"></i></button>
+      <button id="btnCerrarSesion" class="secondary" style="background-color:#de0606; color: #f5f5f5" title="cerrar sesion"><i class="fa-solid fa-arrow-right-from-bracket" style="color:#007fd7"></i></button>
     </div>
   </header>
 
@@ -74,7 +110,7 @@
           <h2 id="modalSurtidoTitulo">Nuevo pedido</h2>
           <p>La fecha se asigna automáticamente y no puede modificarse.</p>
         </div>
-        <button type="button" class="icon-button" data-close="modalSurtido">×</button>
+        <button type="button" class="icon-button" data-close="modalSurtido"><i data-close="modalSurtido" class="fa-solid fa-xmark"></i></button>
       </div>
 
       <div class="form-grid">
@@ -112,7 +148,7 @@
             <option>Cofradia</option>
             <option>Jardines</option>
             <option>Huilango</option>
-            <option>Axotlan</option>
+            <option>Azotlan</option>
           </select>
         </label>
 
@@ -185,7 +221,7 @@
       <div class="product-heading">
         <div>
           <h3>Productos</h3>
-          <p class="scanner-help">Escanea o escribe la clave.</p>
+          <!-- <p class="scanner-help">Escanea o escribe la clave. El nombre se completará desde <code>inventario.json</code>.</p> -->
         </div>
         <span id="estadoCatalogo" class="catalog-status loading">Cargando catálogo…</span>
       </div>
@@ -225,7 +261,7 @@
       <div class="dialog-actions">
         <button type="button" class="ghost" data-close="modalSurtido">Cancelar</button>
         <button id="btnGuardarBorrador" type="button" class="secondary">Guardar pedido</button>
-        <button id="btnFinalizarNuevo" type="button" class="primary">Guardar e <i class="fas fa-print"></i></button>
+        <button id="btnFinalizarNuevo" type="button" class="primary">Guardar e imprimir etiqueta</button>
       </div>
     </form>
   </dialog>
@@ -236,7 +272,7 @@
         <h2 id="detalleId">Pedido</h2>
         <p id="detalleFecha"></p>
       </div>
-      <button type="button" class="icon-button" data-close="modalDetalle">×</button>
+      <button type="button" class="icon-button" data-close="modalDetalle"><i data-close="modalDetalle" class="fa-solid fa-xmark"></i></button>
     </div>
 
     <div id="detalleContenido"></div>
@@ -260,7 +296,7 @@
 
     <div class="dialog-actions wrap">
       <button id="btnAgregarPago" type="button" class="primary">Agregar pago</button>
-      <button id="btnImprimir" type="button" class="secondary"><i class="fas fa-print"></i></button>
+      <button id="btnImprimir" type="button" class="secondary">Imprimir etiqueta</button>
       <button id="btnAbrirDevolucion" type="button" class="danger">Registrar devolución</button>
     </div>
   </dialog>
@@ -272,7 +308,7 @@
         <h2>Reporte de caja</h2>
         <p>Los ingresos se calculan con la fecha real de cada pago o abono.</p>
       </div>
-      <button type="button" class="icon-button" data-close="modalCaja">×</button>
+      <button type="button" class="icon-button" data-close="modalCaja"><i data-close="modalCaja" class="fa-solid fa-xmark"></i></button>
     </div>
 
     <section class="cash-filters">
@@ -359,7 +395,7 @@
 
     <div class="dialog-actions wrap">
       <button id="btnExportarCaja" type="button" class="secondary">Exportar caja a Excel</button>
-      <button id="btnImprimirCaja" type="button" class="primary"><i class="fas fa-print"></i> reporte</button>
+      <button id="btnImprimirCaja" type="button" class="primary">Imprimir reporte</button>
     </div>
   </dialog>
 
@@ -370,7 +406,7 @@
           <h2>Agregar pago</h2>
           <p id="pagoFolio"></p>
         </div>
-        <button type="button" class="icon-button" data-close="modalPago">×</button>
+        <button type="button" class="icon-button" data-close="modalPago"><i data-close="modalPago" class="fa-solid fa-xmark"></i></button>
       </div>
 
       <div class="payment-summary" id="resumenPago"></div>
@@ -409,7 +445,7 @@
         <h2>Registrar devolución</h2>
         <p id="devolucionId"></p>
       </div>
-      <button type="button" class="icon-button" data-close="modalDevolucion">×</button>
+      <button type="button" class="icon-button" data-close="modalDevolucion"><i data-close="modalDevolucion" class="fa-solid fa-xmark"></i></button>
     </div>
 
     <form id="formDevolucion">
@@ -458,14 +494,15 @@
       <p class="card-payment"></p>
       <p class="card-count"></p>
       <div class="card-actions">
-        <button type="button" class="primary card-quick-pay" title="Agregar pago"><i class="fas fa-money-bill-wave"></i></button>
+        <button type="button" class="primary card-quick-pay" title="Agregar pago"><i class="fa-solid fa-cash-register"></i></button>
         <button type="button" class="secondary card-open" title="Ver detalle"><i class="fa-regular fa-eye"></i></button>
-
       </div>
     </article>
   </template>
   <script src="https://kit.fontawesome.com/702f509feb.js" crossorigin="anonymous"></script>
+
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script type="module" src="app.js"></script>
+  </div>
 </body>
 </html>

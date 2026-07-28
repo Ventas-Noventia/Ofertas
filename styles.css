@@ -495,6 +495,128 @@ dialog { position: relative; }
   white-space: nowrap;
 }
 
+
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(20, 184, 166, 0.14), transparent 38%),
+    linear-gradient(145deg, #f7fafc, #edf2f7);
+}
+
+.login-card {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 18px;
+  padding: 32px;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.14);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.login-brand h1,
+.login-brand p {
+  margin: 0;
+}
+
+.login-brand p {
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.login-mark {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  font-size: 25px;
+  font-weight: 800;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.login-card label {
+  display: grid;
+  gap: 7px;
+  font-weight: 650;
+}
+
+.login-card input {
+  min-height: 46px;
+}
+
+.login-submit {
+  width: 100%;
+  min-height: 48px;
+}
+
+.login-error {
+  margin: 0;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: #fff1f2;
+  color: #be123c;
+  font-size: 14px;
+}
+
+.session-user {
+  display: grid;
+  text-align: right;
+  line-height: 1.15;
+  padding: 0 4px;
+}
+
+.session-user span {
+  font-weight: 750;
+}
+
+.session-user small {
+  color: var(--muted, #64748b);
+}
+
+@media (max-width: 720px) {
+  .session-user {
+    width: 100%;
+    text-align: left;
+  }
+}
+
+.imglogo{
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.text-context{
+  display: block
+}
+.login-brand{
+  flex-direction: column;
+}
+
+img{
+  padding: 0;
+  margin: 0;
+}
+
+h1{
+  color: #03335b;
+}
+
+.login-card label {
+    color: #fe6746;
+}
+
 .movement-type.cancelacion {
   background: #fff1dc;
   color: #9a4f00;
@@ -567,3 +689,42 @@ i{
   cursor: pointer;
 }
 
+.item-header img{
+  width: 200px;
+}
+.topbar{
+  display: block;
+}
+
+.item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+i.fa-solid.fa-spider.fa-2x {
+    COLOR: #de0606;
+}
+
+@media screen and (max-width:760px){
+    .item-header {
+        flex-direction:column
+    }
+    .item-header div:nth-child(2){
+        display:none;
+    }
+    #usuarioSesion{
+        margin: 0 0 15px 0;
+        display:flex;
+        gap:10px
+    }
+    #usuarioRol{
+        display:none
+    }
+}
+
+.header-actions{
+      justify-content: flex-end;
+}
+button{
+  cursor: pointer;
+}

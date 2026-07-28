@@ -1,11 +1,11 @@
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 import {
-  getFirestore, collection, addDoc, doc, updateDoc, onSnapshot,
+  getFirestore, collection, addDoc, doc, updateDoc, getDoc, onSnapshot,
   serverTimestamp, query, orderBy, arrayUnion
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import {
-  getAuth, signInAnonymously, onAuthStateChanged
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
@@ -26,6 +26,9 @@ let surtidoActual = null;
 let movimientosCajaActuales = [];
 let catalogoProductos = new Map();
 let catalogoCargado = false;
+let usuarioActual = null;
+let perfilActual = null;
+let cancelarEscuchaSurtidos = null;
 
 const ESTADOS = {
   EN_PROCESO: "En proceso",
@@ -506,6 +509,7 @@ function consultarCaja() {
 }
 
 function abrirReporteCaja() {
+  if (perfilActual?.rol !== "admin") return alert("Solo el administrador puede consultar la caja.");
   const hoy = fechaSoloDia();
   $("#fechaCaja").value = hoy;
   $("#mesCaja").value = hoy.slice(0, 7);
@@ -865,29 +869,133 @@ function transicionesPermitidas(estadoActual) {
   return mapa[estadoActual] || ["EN_PROCESO", "CLASIFICADO", "ENVIADO", "CON_REPARTIDOR", "ENTREGADO", "FINALIZADO", "CANCELADO"];
 }
 
-async function iniciar() {
-  try {
-    await signInAnonymously(auth);
-  } catch (error) {
-    $("#estadoConexion").textContent = "No se pudo iniciar sesión anónima. Revisa Firebase Authentication.";
+function mostrarErrorLogin(mensaje = "") {
+  const elemento = $("#loginError");
+  elemento.textContent = mensaje;
+  elemento.classList.toggle("hidden", !mensaje);
+}
+
+function aplicarPermisos() {
+  const esAdmin = perfilActual?.rol === "admin";
+
+  document.querySelectorAll("[data-admin-only]").forEach(elemento => {
+    elemento.classList.toggle("hidden", !esAdmin);
+  });
+
+  $("#usuarioNombre").textContent =
+    perfilActual?.nombre || usuarioActual?.email || "Usuario";
+
+  $("#usuarioRol").textContent =
+    esAdmin ? "Administrador" : "Vendedor";
+}
+
+async function cargarPerfilUsuario(user) {
+  const referencia = doc(db, "usuarios", user.uid);
+  const snapshot = await getDoc(referencia);
+
+  if (!snapshot.exists()) {
+    throw new Error(
+      "Tu cuenta existe, pero todavía no tiene un perfil autorizado en Firestore."
+    );
+  }
+
+  const perfil = snapshot.data();
+  if (!["admin", "vendedor"].includes(perfil.rol)) {
+    throw new Error("El rol asignado a esta cuenta no es válido.");
+  }
+
+  if (perfil.activo === false) {
+    throw new Error("Esta cuenta se encuentra desactivada.");
+  }
+
+  return perfil;
+}
+
+function iniciarEscuchaPedidos() {
+  if (cancelarEscuchaSurtidos) cancelarEscuchaSurtidos();
+
+  const q = query(collection(db, "surtidos"), orderBy("creadoEn", "desc"));
+  cancelarEscuchaSurtidos = onSnapshot(q, snapshot => {
+    surtidos = snapshot.docs.map(d => ({ idFirestore: d.id, ...d.data() }));
+    renderLista();
+
+    if (perfilActual?.rol === "admin") {
+      cancelarApartadosVencidos();
+    }
+  }, error => {
+    $("#estadoConexion").textContent =
+      "Error al leer Firestore. Revisa la configuración, el usuario y las reglas.";
     console.error(error);
+  });
+}
+
+async function iniciarSesion(event) {
+  event.preventDefault();
+  mostrarErrorLogin("");
+
+  const correo = $("#loginCorreo").value.trim();
+  const contrasena = $("#loginContrasena").value;
+  const boton = $("#btnIniciarSesion");
+
+  boton.disabled = true;
+  boton.textContent = "Ingresando…";
+
+  try {
+    await signInWithEmailAndPassword(auth, correo, contrasena);
+  } catch (error) {
+    console.error(error);
+    const mensajes = {
+      "auth/invalid-credential": "Correo o contraseña incorrectos.",
+      "auth/invalid-email": "El correo electrónico no es válido.",
+      "auth/too-many-requests": "Demasiados intentos. Espera unos minutos.",
+      "auth/network-request-failed": "No se pudo conectar. Revisa tu internet."
+    };
+    mostrarErrorLogin(mensajes[error.code] || "No se pudo iniciar sesión.");
+  } finally {
+    boton.disabled = false;
+    boton.textContent = "Iniciar sesión";
   }
 }
 
-onAuthStateChanged(auth, user => {
-  if (!user) return;
-  $("#estadoConexion").textContent = "Conectado. Los cambios se guardan automáticamente.";
-  const q = query(collection(db, "surtidos"), orderBy("creadoEn", "desc"));
-  onSnapshot(q, snapshot => {
-    surtidos = snapshot.docs.map(d => ({ idFirestore: d.id, ...d.data() }));
-    renderLista();
-    cancelarApartadosVencidos();
-  }, error => {
-    $("#estadoConexion").textContent = "Error al leer Firestore. Revisa la configuración y las reglas.";
-    console.error(error);
-  });
-});
+async function cerrarSesion() {
+  if (!confirm("¿Deseas cerrar la sesión?")) return;
+  await signOut(auth);
+}
 
+onAuthStateChanged(auth, async user => {
+  usuarioActual = user;
+
+  if (!user) {
+    perfilActual = null;
+    surtidos = [];
+    if (cancelarEscuchaSurtidos) {
+      cancelarEscuchaSurtidos();
+      cancelarEscuchaSurtidos = null;
+    }
+
+    $("#aplicacion").classList.add("hidden");
+    $("#pantallaLogin").classList.remove("hidden");
+    $("#formLogin").reset();
+    mostrarErrorLogin("");
+    return;
+  }
+
+  try {
+    perfilActual = await cargarPerfilUsuario(user);
+    aplicarPermisos();
+
+    $("#pantallaLogin").classList.add("hidden");
+    $("#aplicacion").classList.remove("hidden");
+    $("#estadoConexion").textContent =
+      `Conectado como ${perfilActual.nombre || user.email}. Los cambios se guardan automáticamente.`;
+
+    iniciarEscuchaPedidos();
+  } catch (error) {
+    console.error(error);
+    await signOut(auth);
+    mostrarErrorLogin(error.message || "La cuenta no está autorizada.");
+  }
+});
 function renderLista() {
   const texto = $("#buscador").value.trim().toLowerCase();
   const filtro = $("#filtroEstado").value;
@@ -1115,7 +1223,7 @@ function validarPedido() {
     }
   }
   if ($("#estatusPago").value !== "PENDIENTE" && !$("#metodoPagoInicial").value.trim()) {
-    alert("Selecciona el método de pago.");
+    alert("Selecciona el método del primer pago.");
     $("#metodoPagoInicial").focus();
     return false;
   }
@@ -1185,6 +1293,9 @@ async function guardarPedido(imprimir) {
     costoEnvio,
     total,
     estado,
+    creadoPorUid: usuarioActual?.uid || "",
+    creadoPorNombre: perfilActual?.nombre || usuarioActual?.email || "",
+    creadoPorRol: perfilActual?.rol || "",
     creadoEn: serverTimestamp(),
     actualizadoEn: serverTimestamp(),
     devoluciones: [],
@@ -1747,6 +1858,7 @@ function imprimirEtiqueta(s) {
   printArea.id = "printArea";
   printArea.innerHTML = `
     <div class="print-header">
+    <p><img src="/img/logo.JPG" alt="Noventia" style="width: 200px"/></p>
       <strong class="print-type">${escapeHtml(tipoTexto)}</strong>
       <h1>${escapeHtml(s.folio || "SIN FOLIO")}</h1>
     </div>
@@ -1792,6 +1904,7 @@ function imprimirEtiqueta(s) {
 }
 
 function exportarPedidos() {
+  if (perfilActual?.rol !== "admin") return alert("Solo el administrador puede exportar pedidos.");
   if (!surtidos.length) return alert("No hay pedidos para exportar.");
   if (typeof XLSX === "undefined") return alert("No se pudo cargar el generador de Excel.");
 
@@ -1961,19 +2074,9 @@ function configurarEstadosIniciales(tipoOperacion) {
 }
 
 function abrirNuevoPedido(tipoOperacion) {
-  console.log(tipoOperacion);
-  
   $("#formSurtido").reset();
   $("#tipoOperacion").value = tipoOperacion;
   $("#fechaPedido").value = fechaSoloDia();
-  
-  if(tipoOperacion === 'VR'){
-    document.querySelector('#estatusPago option[value="APARTADO"]').hidden = true;
-    document.querySelector('#estatusPago option[value="PENDIENTE"]').hidden = true;
-  }else{
-    document.querySelector('#estatusPago option[value="APARTADO"]').hidden = false;
-    document.querySelector('#estatusPago option[value="PENDIENTE"]').hidden = false;
-  }
 
   const esVentaRapida = tipoOperacion === "VR";
   $("#modalSurtidoTitulo").textContent =
@@ -2051,5 +2154,7 @@ $("#filtroPago").addEventListener("change", renderLista);
 $("#filtroMetodo").addEventListener("change", renderLista);
 $("#filtroDevolucion").addEventListener("change", renderLista);
 
+$("#formLogin").addEventListener("submit", iniciarSesion);
+$("#btnCerrarSesion").addEventListener("click", cerrarSesion);
+
 cargarCatalogoProductos();
-iniciar();

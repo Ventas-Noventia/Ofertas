@@ -261,3 +261,46 @@ Para finalizar:
 - El costo de envío se suma al subtotal de productos para calcular el total del pedido.
 - El total actualizado se utiliza en pagos, apartados, saldos, caja, etiqueta y exportación.
 - Las devoluciones descuentan el valor de los productos devueltos; el costo de envío permanece dentro del total salvo que se modifique manualmente en una versión futura.
+
+
+## Versión 20 — Inicio de sesión y roles
+
+La aplicación utiliza Firebase Authentication con correo y contraseña.
+
+### Roles
+
+- `admin`: acceso completo, incluyendo reporte de caja y exportaciones.
+- `vendedor`: acceso a pedidos, ventas rápidas, pagos y devoluciones. No ve caja ni exportaciones.
+
+### Configuración inicial en Firebase
+
+1. En Firebase Console abre **Authentication → Sign-in method**.
+2. Activa **Correo electrónico/contraseña**.
+3. En **Authentication → Users**, crea cada cuenta.
+4. Copia el `UID` de la cuenta.
+5. En Firestore crea la colección `usuarios`.
+6. Crea un documento cuyo ID sea exactamente el UID.
+
+Ejemplo de administrador:
+
+```json
+{
+  "nombre": "Administrador",
+  "rol": "admin",
+  "activo": true
+}
+```
+
+Ejemplo de vendedor:
+
+```json
+{
+  "nombre": "Daniela",
+  "rol": "vendedor",
+  "activo": true
+}
+```
+
+7. Publica el archivo `firestore.rules` incluido en esta versión.
+
+El sistema no permite elegir el rol desde el formulario de acceso. El rol se obtiene del documento autorizado en Firestore.
