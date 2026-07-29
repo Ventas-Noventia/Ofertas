@@ -43,7 +43,7 @@
       </div>
       <div id="usuarioSesion" class="session-user">
         <i class="fa-solid fa-spider fa-2x"></i>
-        
+        <span id="usuarioNombre">Usuario</span>
         <small id="usuarioRol"></small>
       </div>
     </div>
@@ -204,7 +204,7 @@
         </label>
 
         <label id="campoMetodoPago" class="hidden">
-          Método del primer pago
+          Método de pago
           <select id="metodoPagoInicial">
             <option value="">Seleccionar</option>
             <option value="EFECTIVO">Efectivo</option>
@@ -226,18 +226,30 @@
         <span id="estadoCatalogo" class="catalog-status loading">Cargando catálogo…</span>
       </div>
       <div class="product-entry">
-        <label>
+        <label class="campo-clave-producto">
           Clave
-          <input
-            id="productoClave"
-            type="text"
-            maxlength="50"
-            placeholder="Escanea o escribe el SKU"
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-            inputmode="text"
-          />
+          <div class="clave-con-escaner">
+            <input
+              id="productoClave"
+              type="text"
+              maxlength="50"
+              placeholder="Escanea o escribe el SKU"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              inputmode="text"
+            />
+            <button
+              id="btnEscanearCodigo"
+              type="button"
+              class="secondary boton-escaner-movil"
+              aria-label="Escanear código con la cámara"
+              title="Escanear con cámara"
+            >
+              <i class="fa-solid fa-camera"></i>
+              <span>Escanear</span>
+            </button>
+          </div>
           <!-- <small id="mensajeProducto" class="product-message"></small> -->
         </label>
         <label class="grow">
@@ -482,6 +494,90 @@
     </form>
   </dialog>
 
+
+  <dialog id="modalEditarPedido" class="wide-dialog">
+    <div class="dialog-header">
+      <div>
+        <h2>Editar pedido</h2>
+        <p id="editarPedidoFolio"></p>
+      </div>
+      <button type="button" class="icon-button" data-close="modalEditarPedido" aria-label="Cerrar">
+        <i data-close="modalEditarPedido" class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <form id="formEditarPedido">
+      <div class="form-grid">
+        <label>Nombre del cliente<input id="editarNombreCliente" maxlength="120" required /></label>
+        <label>Vendedor<input id="editarVendedor" maxlength="120" required /></label>
+        <label>Responsable
+          <select id="editarResponsable" required>
+            <option value="">Seleccionar</option>
+            <option>Dila</option><option>Juan</option><option>Frida</option>
+            <option>Eric</option><option>Yare</option><option>Kevin</option>
+          </select>
+        </label>
+        <!-- <label>Tipo de operación
+          <select id="editarTipoOperacion" required>
+            <option value="ALM">Almacén</option><option value="BAZ">Bazar</option><option value="VR">Venta rápida</option>
+          </select>
+        </label> -->
+        <label>Estado
+          <select id="editarEstado" required>
+            <option value="EN_PROCESO">En proceso</option><option value="CLASIFICADO">Clasificado</option>
+            <option value="ENVIADO">Enviado</option><option value="CON_REPARTIDOR">Ingresado a punto de venta</option>
+            <option value="ENTREGADO">Entregado</option><option value="FINALIZADO">Finalizado</option>
+            <option value="CANCELADO">Cancelado</option><option value="CON_DEVOLUCION">Pendiente de registrar devolución</option>
+          </select>
+        </label>
+        <label>Estatus de pago
+          <select id="editarEstatusPago" required>
+            <option value="PENDIENTE">Pendiente de pago</option><option value="APARTADO">Apartado</option><option value="PAGADO">Pagado</option>
+          </select>
+        </label>
+        <label>Ubicación / entrega<input id="editarUbicacion" maxlength="250" /></label>
+        <label>Costo de envío<input id="editarCostoEnvio" type="number" min="0" step="0.01" value="0" /></label>
+      </div>
+
+      <div class="edit-products-heading">
+        <div><h3>Productos</h3><p>Modifica nombre, clave, costo o cantidad.</p></div>
+        <button id="btnAgregarProductoEdicion" type="button" class="secondary"><i class="fa-solid fa-plus"></i> Agregar producto</button>
+      </div>
+      <div id="productosEditar" class="edit-products-list"></div>
+      <div class="order-total">Nuevo total: <strong id="totalEditarPedido">$0.00</strong></div>
+
+      <label>Motivo de la edición
+        <textarea id="motivoEdicionPedido" rows="3" maxlength="500" required placeholder="Explica brevemente por qué se modifica el pedido"></textarea>
+      </label>
+
+      <div class="dialog-actions">
+        <button type="button" class="ghost" data-close="modalEditarPedido">Cancelar</button>
+        <button type="submit" class="primary"><i class="fa-solid fa-floppy-disk"></i> Guardar cambios</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="modalEscaner" class="modal-escaner">
+    <div class="scanner-container">
+      <div class="dialog-header scanner-header">
+        <div>
+          <h2>Escanear código</h2>
+          <p>Coloca el código de barras dentro del recuadro.</p>
+        </div>
+        <button id="btnCerrarEscaner" type="button" class="icon-button" aria-label="Cerrar cámara">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div id="lectorCodigoMovil" class="lector-codigo-movil"></div>
+      <p id="mensajeEscaner" class="scanner-message">Preparando cámara…</p>
+
+      <button id="btnCancelarEscaner" type="button" class="secondary scanner-cancel-button">
+        Cancelar
+      </button>
+    </div>
+  </dialog>
+
   <template id="templateCard">
     <article class="card">
       <div class="card-head">
@@ -496,12 +592,15 @@
       <div class="card-actions">
         <button type="button" class="primary card-quick-pay" title="Agregar pago"><i class="fa-solid fa-cash-register"></i></button>
         <button type="button" class="secondary card-open" title="Ver detalle"><i class="fa-regular fa-eye"></i></button>
+        <button type="button" class="secondary card-edit admin-order-action hidden" title="Editar pedido"><i class="fa-solid fa-pen"></i></button>
+        <button type="button" class="danger card-delete admin-order-action hidden" title="Eliminar pedido"><i class="fa-solid fa-trash"></i></button>
       </div>
     </article>
   </template>
   <script src="https://kit.fontawesome.com/702f509feb.js" crossorigin="anonymous"></script>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script type="module" src="app.js"></script>
   </div>
 </body>

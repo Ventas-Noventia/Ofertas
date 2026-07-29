@@ -728,3 +728,135 @@ i.fa-solid.fa-spider.fa-2x {
 button{
   cursor: pointer;
 }
+/* Escáner móvil de códigos de barras */
+.clave-con-escaner {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.clave-con-escaner input {
+  flex: 1;
+  min-width: 0;
+}
+
+.boton-escaner-movil {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
+  min-width: 112px;
+}
+
+.modal-escaner {
+  width: min(94vw, 520px);
+  max-width: 520px;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.modal-escaner::backdrop {
+  background: rgba(15, 23, 42, 0.82);
+}
+
+.scanner-container {
+  padding: 18px;
+  background: #fff;
+}
+
+.scanner-header {
+  margin-bottom: 14px;
+}
+
+.scanner-header h2,
+.scanner-header p {
+  margin: 0;
+}
+
+.scanner-header p {
+  margin-top: 5px;
+  color: #64748b;
+}
+
+.lector-codigo-movil {
+  width: 100%;
+  min-height: 300px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #111827;
+}
+
+.lector-codigo-movil video {
+  width: 100% !important;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+.scanner-message {
+  min-height: 22px;
+  margin: 14px 0;
+  text-align: center;
+  color: #475569;
+}
+
+.scanner-message.success {
+  color: #15803d;
+  font-weight: 700;
+}
+
+.scanner-message.error {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.scanner-cancel-button {
+  width: 100%;
+}
+
+@media screen and (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  .boton-escaner-movil {
+    display: inline-flex;
+  }
+}
+
+@media screen and (max-width: 760px) {
+  .campo-clave-producto {
+    width: 100%;
+  }
+
+  .clave-con-escaner {
+    width: 100%;
+  }
+
+  .modal-escaner {
+    width: 96vw;
+  }
+
+  .scanner-container {
+    padding: 14px;
+  }
+
+  .lector-codigo-movil {
+    min-height: 360px;
+  }
+}
+.clave-con-escaner{
+flex-direction: column;
+}
+
+#mensajeProducto{
+  display: none;
+}
+
+#modalEditarPedido .form-grid{
+    grid-template-columns: repeat(3, 1fr);
+}
+.edit-product-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 10px 0;
+}

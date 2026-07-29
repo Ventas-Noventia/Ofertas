@@ -29,6 +29,11 @@ let catalogoCargado = false;
 let usuarioActual = null;
 let perfilActual = null;
 let cancelarEscuchaSurtidos = null;
+let lectorCodigoMovil = null;
+let escanerMovilActivo = false;
+let procesandoCodigoMovil = false;
+let pedidoEnEdicion = null;
+let productosEdicion = [];
 
 const ESTADOS = {
   EN_PROCESO: "En proceso",
@@ -849,6 +854,152 @@ function manejarLecturaCodigo(event) {
   return producto;
 }
 
+// =========================
+// Escáner móvil por cámara
+// =========================
+function actualizarMensajeEscaner(texto = "", tipo = "") {
+  const elemento = $("#mensajeEscaner");
+  if (!elemento) return;
+  elemento.textContent = texto;
+  elemento.className = `scanner-message ${tipo}`.trim();
+}
+
+function esDispositivoMovil() {
+  return (
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 0 && window.matchMedia("(max-width: 1024px)").matches)
+  );
+}
+
+async function detenerEscanerMovil() {
+  escanerMovilActivo = false;
+
+  if (!lectorCodigoMovil) return;
+
+  try {
+    if (lectorCodigoMovil.isScanning) {
+      await lectorCodigoMovil.stop();
+    }
+  } catch (error) {
+    console.warn("No fue posible detener el escáner:", error);
+  }
+
+  try {
+    lectorCodigoMovil.clear();
+  } catch (error) {
+    console.warn("No fue posible limpiar el escáner:", error);
+  }
+
+  lectorCodigoMovil = null;
+}
+
+async function cerrarEscanerMovil() {
+  await detenerEscanerMovil();
+
+  const modal = $("#modalEscaner");
+  if (modal?.open) modal.close();
+}
+
+async function procesarCodigoMovil(codigoLeido) {
+  if (procesandoCodigoMovil) return;
+
+  const clave = limpiarClaveProducto(codigoLeido);
+  if (!clave) return;
+
+  procesandoCodigoMovil = true;
+  actualizarMensajeEscaner(`Código detectado: ${clave}`, "success");
+
+  if ("vibrate" in navigator) navigator.vibrate(120);
+
+  const campoClave = $("#productoClave");
+  if (campoClave) campoClave.value = clave;
+
+  await cerrarEscanerMovil();
+
+  const producto = buscarProductoCatalogo({ enfocarSiguiente: true });
+  if (!producto) $("#productoNombre")?.focus();
+
+  window.setTimeout(() => {
+    procesandoCodigoMovil = false;
+  }, 500);
+}
+
+async function iniciarEscanerMovil() {
+  const modal = $("#modalEscaner");
+  const contenedor = $("#lectorCodigoMovil");
+
+  if (!modal || !contenedor) {
+    alert("No se encontró la ventana del escáner en el HTML.");
+    return;
+  }
+
+  if (!window.Html5Qrcode) {
+    alert("No fue posible cargar la librería del escáner. Revisa tu conexión a internet.");
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("Este navegador no permite usar la cámara. Abre el sistema desde HTTPS en Chrome o Safari.");
+    return;
+  }
+
+  if (escanerMovilActivo) return;
+
+  modal.showModal();
+  actualizarMensajeEscaner("Solicitando permiso para usar la cámara…");
+
+  try {
+    lectorCodigoMovil = new window.Html5Qrcode("lectorCodigoMovil");
+    escanerMovilActivo = true;
+
+    const configuracion = {
+      fps: 12,
+      qrbox: (anchoVista, altoVista) => ({
+        width: Math.min(Math.floor(anchoVista * 0.88), 340),
+        height: Math.min(Math.floor(altoVista * 0.36), 150)
+      }),
+      aspectRatio: 1.5,
+      disableFlip: true
+    };
+
+    actualizarMensajeEscaner("Apunta la cámara al código de barras.");
+
+    await lectorCodigoMovil.start(
+      { facingMode: "environment" },
+      configuracion,
+      codigo => procesarCodigoMovil(codigo),
+      () => {
+        // Los intentos sin lectura son normales y no deben mostrarse como error.
+      }
+    );
+  } catch (error) {
+    console.error("Error al iniciar el escáner móvil:", error);
+    await detenerEscanerMovil();
+
+    let mensaje = "No se pudo abrir la cámara. Revisa los permisos del navegador.";
+    const nombreError = error?.name || "";
+    const textoError = String(error?.message || error || "").toLowerCase();
+
+    if (nombreError === "NotAllowedError" || textoError.includes("permission")) {
+      mensaje = "El permiso de cámara fue rechazado. Actívalo en la configuración del navegador.";
+    } else if (nombreError === "NotFoundError" || textoError.includes("camera not found")) {
+      mensaje = "No se encontró una cámara disponible en este dispositivo.";
+    } else if (!window.isSecureContext) {
+      mensaje = "La cámara necesita que el sistema esté publicado con HTTPS.";
+    }
+
+    actualizarMensajeEscaner(mensaje, "error");
+  }
+}
+
+function configurarBotonEscanerMovil() {
+  const boton = $("#btnEscanearCodigo");
+  if (!boton) return;
+
+  // CSS controla la visualización; esta clase también permite teléfonos con pantalla grande.
+  boton.classList.toggle("dispositivo-movil", esDispositivoMovil());
+}
+
 function siguienteFolio(tipo) {
   const hoy = fechaSoloDia().replaceAll("-", "");
   const consecutivo = Date.now().toString().slice(-5);
@@ -881,6 +1032,9 @@ function aplicarPermisos() {
   document.querySelectorAll("[data-admin-only]").forEach(elemento => {
     elemento.classList.toggle("hidden", !esAdmin);
   });
+
+  $("#usuarioNombre").textContent =
+    perfilActual?.nombre || usuarioActual?.email || "Usuario";
 
   $("#usuarioRol").textContent =
     esAdmin ? "Administrador" : "Vendedor";
@@ -1001,6 +1155,7 @@ function renderLista() {
   const filtroDevolucion = $("#filtroDevolucion").value;
 
   const filtrados = surtidos.filter(s => {
+    if (s.eliminado === true) return false;
     const contenido = [
       s.folio, s.nombreCliente, s.ubicacion, s.responsable, s.vendedor,
       ...(s.productos || []).flatMap(p => [p.clave, p.nombre])
@@ -1069,13 +1224,237 @@ function renderLista() {
     });
 
     nodo.querySelector(".card-open").addEventListener("click", () => abrirDetalle(s));
+
+    const esAdmin = perfilActual?.rol === "admin";
+    const botonEditar = nodo.querySelector(".card-edit");
+    const botonEliminar = nodo.querySelector(".card-delete");
+    botonEditar.classList.toggle("hidden", !esAdmin);
+    botonEliminar.classList.toggle("hidden", !esAdmin);
+    botonEditar.addEventListener("click", event => {
+      event.stopPropagation();
+      abrirEdicionPedido(s);
+    });
+    botonEliminar.addEventListener("click", event => {
+      event.stopPropagation();
+      eliminarPedidoLogico(s);
+    });
+
     lista.appendChild(nodo);
   }
 
-  $("#totalHoy").textContent = surtidos.filter(hoyMismo).length;
-  $("#totalProceso").textContent = surtidos.filter(s => s.estado === "EN_PROCESO").length;
-  $("#totalRuta").textContent = surtidos.filter(s => ["CLASIFICADO", "ENVIADO", "CON_REPARTIDOR"].includes(s.estado)).length;
-  $("#totalFinalizados").textContent = surtidos.filter(s => ["ENTREGADO", "FINALIZADO"].includes(s.estado)).length;
+  const pedidosActivos = surtidos.filter(s => s.eliminado !== true);
+  $("#totalHoy").textContent = pedidosActivos.filter(hoyMismo).length;
+  $("#totalProceso").textContent = pedidosActivos.filter(s => s.estado === "EN_PROCESO").length;
+  $("#totalRuta").textContent = pedidosActivos.filter(s => ["CLASIFICADO", "ENVIADO", "CON_REPARTIDOR"].includes(s.estado)).length;
+  $("#totalFinalizados").textContent = pedidosActivos.filter(s => ["ENTREGADO", "FINALIZADO"].includes(s.estado)).length;
+}
+
+
+function asegurarAdministrador() {
+  if (perfilActual?.rol === "admin") return true;
+  alert("Solo el administrador puede realizar esta acción.");
+  return false;
+}
+
+function snapshotEditablePedido(s) {
+  return {
+    nombreCliente: s.nombreCliente || "",
+    vendedor: s.vendedor || "",
+    responsable: s.responsable || "",
+    tipoOperacion: s.tipoOperacion || "ALM",
+    estado: s.estado || "EN_PROCESO",
+    estatusPago: s.estatusPago || "PENDIENTE",
+    ubicacion: s.ubicacion || "",
+    costoEnvio: Number(s.costoEnvio || 0),
+    productos: (s.productos || []).map(p => ({
+      idLinea: p.idLinea || crypto.randomUUID(),
+      clave: p.clave || "",
+      nombre: p.nombre || "",
+      costo: Number(p.costo || 0),
+      cantidad: Number(p.cantidad || 1)
+    }))
+  };
+}
+
+function renderProductosEdicion() {
+  const contenedor = $("#productosEditar");
+  contenedor.innerHTML = "";
+
+  productosEdicion.forEach((producto, index) => {
+    const fila = document.createElement("div");
+    fila.className = "edit-product-row";
+    fila.innerHTML = `
+      <label>Clave<input class="edit-product-key" value="${escapeHtml(producto.clave)}" maxlength="50"></label>
+      <label>Producto<input class="edit-product-name" value="${escapeHtml(producto.nombre)}" maxlength="180" required></label>
+      <label>Costo<input class="edit-product-cost" type="number" min="0.01" step="0.01" value="${Number(producto.costo || 0)}" required></label>
+      <label>Cantidad<input class="edit-product-qty" type="number" min="1" step="1" value="${Number(producto.cantidad || 1)}" required></label>
+      <button type="button" class="danger edit-product-remove" title="Quitar producto"><i class="fa-solid fa-trash"></i></button>`;
+
+    const sincronizar = () => {
+      producto.clave = fila.querySelector(".edit-product-key").value.trim();
+      producto.nombre = fila.querySelector(".edit-product-name").value.trim();
+      producto.costo = Number(fila.querySelector(".edit-product-cost").value || 0);
+      producto.cantidad = Number(fila.querySelector(".edit-product-qty").value || 0);
+      actualizarTotalEdicion();
+    };
+    fila.querySelectorAll("input").forEach(input => input.addEventListener("input", sincronizar));
+    fila.querySelector(".edit-product-remove").addEventListener("click", () => {
+      if (productosEdicion.length === 1) return alert("El pedido debe conservar al menos un producto.");
+      productosEdicion.splice(index, 1);
+      renderProductosEdicion();
+      actualizarTotalEdicion();
+    });
+    contenedor.appendChild(fila);
+  });
+}
+
+function actualizarTotalEdicion() {
+  const subtotal = totalPedido(productosEdicion);
+  const envio = Number($("#editarCostoEnvio")?.value || 0);
+  $("#totalEditarPedido").textContent = moneda(subtotal + Math.max(0, envio));
+}
+
+function abrirEdicionPedido(s) {
+  if (!asegurarAdministrador()) return;
+  pedidoEnEdicion = s;
+  productosEdicion = snapshotEditablePedido(s).productos;
+
+  $("#editarPedidoFolio").textContent = `${s.folio || "Pedido"} · Creado ${fechaPedidoTexto(s)}`;
+  $("#editarNombreCliente").value = s.nombreCliente || "";
+  $("#editarVendedor").value = s.vendedor || "";
+  $("#editarResponsable").value = s.responsable || "";
+  // $("#editarTipoOperacion").value = s.tipoOperacion || "ALM";
+  $("#editarEstado").value = s.estado || "EN_PROCESO";
+  $("#editarEstatusPago").value = s.estatusPago || "PENDIENTE";
+  $("#editarUbicacion").value = s.ubicacion || "";
+  $("#editarCostoEnvio").value = Number(s.costoEnvio || 0);
+  $("#motivoEdicionPedido").value = "";
+  renderProductosEdicion();
+  actualizarTotalEdicion();
+  $("#modalEditarPedido").showModal();
+}
+
+function validarProductosEdicion() {
+  if (!productosEdicion.length) return "Agrega al menos un producto.";
+  for (const p of productosEdicion) {
+    if (!String(p.nombre || "").trim()) return "Todos los productos deben tener nombre.";
+    if (!Number.isFinite(Number(p.costo)) || Number(p.costo) <= 0) return "Todos los productos deben tener un costo mayor a cero.";
+    if (!Number.isInteger(Number(p.cantidad)) || Number(p.cantidad) < 1) return "Todas las cantidades deben ser números enteros mayores a cero.";
+  }
+  return "";
+}
+
+function generarCambiosPedido(antes, despues) {
+  const etiquetas = {
+    nombreCliente: "Cliente", vendedor: "Vendedor", responsable: "Responsable",
+    // tipoOperacion: "Tipo de operación",
+     estado: "Estado", estatusPago: "Estatus de pago",
+    ubicacion: "Ubicación", costoEnvio: "Costo de envío"
+  };
+  const cambios = [];
+  for (const campo of Object.keys(etiquetas)) {
+    if (String(antes[campo] ?? "") !== String(despues[campo] ?? "")) {
+      cambios.push({ campo, etiqueta: etiquetas[campo], anterior: antes[campo] ?? "", nuevo: despues[campo] ?? "" });
+    }
+  }
+  if (JSON.stringify(antes.productos) !== JSON.stringify(despues.productos)) {
+    cambios.push({ campo: "productos", etiqueta: "Productos", anterior: `${antes.productos.length} líneas`, nuevo: `${despues.productos.length} líneas` });
+  }
+  return cambios;
+}
+
+async function guardarEdicionPedido(event) {
+  event.preventDefault();
+  if (!asegurarAdministrador() || !pedidoEnEdicion?.idFirestore) return;
+
+  const errorProductos = validarProductosEdicion();
+  if (errorProductos) return alert(errorProductos);
+  const motivo = $("#motivoEdicionPedido").value.trim();
+  if (!motivo) return alert("Escribe el motivo de la edición.");
+
+  if (["ENTREGADO", "FINALIZADO"].includes(pedidoEnEdicion.estado)) {
+    const confirmar = confirm("Este pedido ya está entregado o finalizado. Al guardar quedará registrada su reapertura en el historial. ¿Continuar?");
+    if (!confirmar) return;
+  }
+
+  const antes = snapshotEditablePedido(pedidoEnEdicion);
+  const costoEnvio = Math.max(0, Number($("#editarCostoEnvio").value || 0));
+  const despues = {
+    nombreCliente: $("#editarNombreCliente").value.trim(),
+    vendedor: $("#editarVendedor").value.trim(),
+    responsable: $("#editarResponsable").value,
+    // tipoOperacion: $("#editarTipoOperacion").value,
+    estado: $("#editarEstado").value,
+    estatusPago: $("#editarEstatusPago").value,
+    ubicacion: $("#editarUbicacion").value.trim(),
+    costoEnvio,
+    productos: productosEdicion.map(p => ({ ...p, clave: limpiarClaveProducto(p.clave), nombre: p.nombre.trim(), costo: Number(p.costo), cantidad: Number(p.cantidad) }))
+  };
+  if (!despues.nombreCliente || !despues.vendedor || !despues.responsable) return alert("Completa cliente, vendedor y responsable.");
+
+  const cambios = generarCambiosPedido(antes, despues);
+  if (!cambios.length) return alert("No se detectaron cambios.");
+  const subtotalProductos = totalPedido(despues.productos);
+  const total = subtotalProductos + costoEnvio;
+  const historial = {
+    tipo: ["ENTREGADO", "FINALIZADO"].includes(pedidoEnEdicion.estado) ? "PEDIDO_REABIERTO_Y_EDITADO" : "PEDIDO_EDITADO",
+    detalle: motivo,
+    cambios,
+    usuarioUid: usuarioActual?.uid || "",
+    usuarioNombre: perfilActual?.nombre || usuarioActual?.email || "Administrador",
+    fechaISO: new Date().toISOString()
+  };
+
+  try {
+    establecerCargaModal($("#modalEditarPedido"), true, "Guardando cambios…");
+    await updateDoc(doc(db, "surtidos", pedidoEnEdicion.idFirestore), {
+      ...despues,
+      subtotalProductos,
+      total,
+      actualizadoEn: serverTimestamp(),
+      actualizadoPorUid: usuarioActual?.uid || "",
+      actualizadoPorNombre: perfilActual?.nombre || usuarioActual?.email || "",
+      historial: arrayUnion(historial)
+    });
+    $("#modalEditarPedido").close();
+    if (modalDetalle.open) modalDetalle.close();
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo actualizar el pedido. Revisa las reglas de Firestore.");
+  } finally {
+    establecerCargaModal($("#modalEditarPedido"), false);
+  }
+}
+
+async function eliminarPedidoLogico(s) {
+  if (!asegurarAdministrador() || !s?.idFirestore) return;
+  const motivo = prompt(`Vas a eliminar el pedido ${s.folio || "sin folio"}.\n\nEscribe el motivo de la eliminación:`);
+  if (motivo === null) return;
+  if (!motivo.trim()) return alert("El motivo de eliminación es obligatorio.");
+  if (!confirm(`¿Confirmas eliminar ${s.folio || "este pedido"}?\n\nEl pedido se ocultará, pero conservará su historial para auditoría.`)) return;
+
+  try {
+    await updateDoc(doc(db, "surtidos", s.idFirestore), {
+      eliminado: true,
+      eliminadoEn: serverTimestamp(),
+      eliminadoFechaISO: new Date().toISOString(),
+      eliminadoPorUid: usuarioActual?.uid || "",
+      eliminadoPorNombre: perfilActual?.nombre || usuarioActual?.email || "Administrador",
+      motivoEliminacion: motivo.trim(),
+      actualizadoEn: serverTimestamp(),
+      historial: arrayUnion({
+        tipo: "PEDIDO_ELIMINADO",
+        detalle: motivo.trim(),
+        usuarioUid: usuarioActual?.uid || "",
+        usuarioNombre: perfilActual?.nombre || usuarioActual?.email || "Administrador",
+        fechaISO: new Date().toISOString()
+      })
+    });
+    if (surtidoActual?.idFirestore === s.idFirestore && modalDetalle.open) modalDetalle.close();
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo eliminar el pedido. Revisa las reglas de Firestore.");
+  }
 }
 
 function costoEnvioNuevo() {
@@ -1855,7 +2234,7 @@ function imprimirEtiqueta(s) {
   printArea.id = "printArea";
   printArea.innerHTML = `
     <div class="print-header">
-    <p><img src="logo.JPG" alt="Noventia" style="width: 120px"/></p>
+    <p><img src="/logo.JPG" alt="Noventia" style="width: 200px"/></p>
       <strong class="print-type">${escapeHtml(tipoTexto)}</strong>
       <h1>${escapeHtml(s.folio || "SIN FOLIO")}</h1>
     </div>
@@ -1863,11 +2242,15 @@ function imprimirEtiqueta(s) {
       <p><strong>Fecha:</strong> ${escapeHtml(fechaPedidoTexto(s))}</p>
       <p><strong>Cliente:</strong> ${escapeHtml(cliente)}</p>
       <p><strong>Vendedor:</strong> ${escapeHtml(s.vendedor || "No registrado")}</p>
+      <p><strong>Pago:</strong> ${escapeHtml(textoPago(s.estatusPago))}</p>
+      <p><strong>Subtotal de productos:</strong> ${escapeHtml(moneda(Number(s.subtotalProductos ?? totalPedido(s.productos))))}</p>
       <p><strong>Costo de envío:</strong> ${escapeHtml(moneda(Number(s.costoEnvio || 0)))}</p>
       <p><strong>Total original:</strong> ${escapeHtml(moneda(s.total || totalPedido(s.productos)))}</p>
       <p><strong>Devoluciones:</strong> -${escapeHtml(moneda(importeDevoluciones(s)))}</p>
+      <p><strong>Total ajustado:</strong> ${escapeHtml(moneda(totalAjustadoPedido(s)))}</p>
       <p><strong>Pagado:</strong> ${escapeHtml(moneda(totalPagado(s)))}</p>
       <p><strong>Saldo:</strong> ${escapeHtml(moneda(saldoPendiente(s)))}</p>
+      <p><strong>Método(s):</strong> ${escapeHtml([...new Set(pagosPedido(s).map(p => metodoPagoTexto(p.metodo)))].join(", ") || "No registrado")}</p>
       <p><strong>Ubicación:</strong> ${escapeHtml(ubicacionTexto)}</p>
     </div>
     <div class="print-products">
@@ -2049,6 +2432,7 @@ function configurarEstadosIniciales(tipoOperacion) {
 
   const opciones = tipoOperacion === "BAZ"
     ? [
+        ["PROCESO", "EN PROCESO"],
         ["CLASIFICADO", "Clasificado"],
         ["ENTREGADO", "Entregado"],
         ["FINALIZADO", "Finalizado"]
@@ -2123,6 +2507,22 @@ $("#btnExportarCaja").addEventListener("click", exportarCaja);
 $("#btnImprimirCaja").addEventListener("click", imprimirCaja);
 $("#btnAgregarProducto").addEventListener("click", agregarProducto);
 $("#productoClave").addEventListener("keydown", manejarLecturaCodigo);
+
+const btnEscanearCodigo = $("#btnEscanearCodigo");
+const btnCerrarEscaner = $("#btnCerrarEscaner");
+const btnCancelarEscaner = $("#btnCancelarEscaner");
+const modalEscaner = $("#modalEscaner");
+
+btnEscanearCodigo?.addEventListener("click", iniciarEscanerMovil);
+btnCerrarEscaner?.addEventListener("click", cerrarEscanerMovil);
+btnCancelarEscaner?.addEventListener("click", cerrarEscanerMovil);
+modalEscaner?.addEventListener("cancel", event => {
+  event.preventDefault();
+  cerrarEscanerMovil();
+});
+modalEscaner?.addEventListener("close", () => {
+  if (escanerMovilActivo) detenerEscanerMovil();
+});
 $("#productoClave").addEventListener("change", () => buscarProductoCatalogo());
 $("#productoClave").addEventListener("blur", () => {
   if ($("#productoClave").value.trim() && !$("#productoNombre").value.trim()) {
@@ -2141,6 +2541,13 @@ $("#formPago").addEventListener("submit", guardarNuevoPago);
 $("#btnAbrirDevolucion").addEventListener("click", abrirDevolucion);
 $("#btnImprimir").addEventListener("click", () => imprimirEtiqueta(surtidoActual));
 $("#formDevolucion").addEventListener("submit", guardarDevolucion);
+$("#formEditarPedido").addEventListener("submit", guardarEdicionPedido);
+$("#btnAgregarProductoEdicion").addEventListener("click", () => {
+  productosEdicion.push({ idLinea: crypto.randomUUID(), clave: "", nombre: "", costo: 0, cantidad: 1 });
+  renderProductosEdicion();
+  actualizarTotalEdicion();
+});
+$("#editarCostoEnvio").addEventListener("input", actualizarTotalEdicion);
 $("#buscador").addEventListener("input", renderLista);
 $("#filtroEstado").addEventListener("change", renderLista);
 $("#filtroPago").addEventListener("change", renderLista);
@@ -2151,3 +2558,4 @@ $("#formLogin").addEventListener("submit", iniciarSesion);
 $("#btnCerrarSesion").addEventListener("click", cerrarSesion);
 
 cargarCatalogoProductos();
+configurarBotonEscanerMovil();
