@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lista de productos | Control de pedidos</title>
+  <link rel="stylesheet" href="lista-productos.css">
+</head>
+<body>
+  <header class="report-header">
+    <div>
+      <button id="btnVolver" class="back-link" type="button"><i class="fa-solid fa-arrow-left"></i> Volver a pedidos</button>
+      <h1>Lista de productos</h1>
+      <p>Consulta y suma de saldos por pedido</p>
+    </div>
+    <div class="header-user">
+      <strong id="nombreUsuario">Validando sesión…</strong>
+      <small id="rolUsuario"></small>
+    </div>
+  </header>
+
+  <main class="report-container">
+    <section id="mensajeAcceso" class="notice">Conectando con Firebase…</section>
+
+    <div id="contenidoReporte" class="hidden">
+      <section class="report-controls">
+        <label class="search-field">
+          Buscar por SKU o cliente
+          <input id="buscadorLista" type="search" placeholder="Escribe un SKU o el nombre del cliente" autocomplete="off">
+        </label>
+        <button id="btnLimpiarSeleccion" class="secondary" type="button"><i class="fa-solid fa-rotate-left"></i> Limpiar selección</button>
+      </section>
+
+      <section class="summary-grid">
+        <article><span id="pedidosSeleccionados">0</span><small>Pedidos seleccionados</small></article>
+        <article><span id="productosSeleccionados">0</span><small>Productos distintos</small></article>
+        <article><span id="piezasSeleccionadas">0</span><small>Piezas seleccionadas</small></article>
+        <article class="balance-card"><span id="saldoSeleccionado">$0.00</span><small>Saldo restante total</small></article>
+      </section>
+
+      <section id="accionesSeleccion" class="bulk-actions hidden">
+        <div><strong>Acciones para los pedidos seleccionados</strong><small id="mensajePermisos"></small></div>
+        <button id="btnPagoMasivo" class="primary hidden" type="button"><i class="fa-solid fa-money-bill-wave"></i> Agregar pago</button>
+        <button id="btnEstadoMasivo" class="secondary hidden" type="button"><i class="fa-solid fa-rotate"></i> Cambiar estatus</button>
+      </section>
+
+      <p class="exclusion-note"><i class="fa-solid fa-circle-info"></i> Los pedidos finalizados aparecen deshabilitados y no se incluyen en la suma.</p>
+
+      <section id="resumenSeleccion" class="general-summary hidden"></section>
+      <section id="listasProductos" class="group-list"></section>
+      <div id="instruccionBusqueda" class="empty">Busca un SKU o cliente para consultar sus pedidos y productos.</div>
+      <div id="sinResultadosLista" class="empty hidden">No encontramos pedidos con ese SKU o cliente.</div>
+    </div>
+  </main>
+
+  <dialog id="modalPagoMasivo">
+    <form id="formPagoMasivo">
+      <div class="modal-head"><div><h2>Agregar pago</h2><p id="resumenPagoMasivo"></p></div><button type="button" class="icon-close" data-close="modalPagoMasivo">×</button></div>
+      <label>Monto total a registrar<input id="montoPagoMasivo" type="number" min="0.01" step="0.01" required></label>
+      <label>Método de pago<select id="metodoPagoMasivo" required><option value="">Selecciona una opción</option><option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option></select></label>
+      <label>Fecha del pago<input id="fechaPagoMasivo" type="date" required></label>
+      <p class="modal-note">El monto se distribuirá entre los pedidos seleccionados hasta cubrir el saldo de cada uno.</p>
+      <div class="modal-actions"><button type="button" class="secondary" data-close="modalPagoMasivo">Cancelar</button><button id="btnGuardarPagoMasivo" type="submit" class="primary">Registrar pago</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="modalEstadoMasivo">
+    <form id="formEstadoMasivo">
+      <div class="modal-head"><div><h2>Cambiar estatus</h2><p id="resumenEstadoMasivo"></p></div><button type="button" class="icon-close" data-close="modalEstadoMasivo">×</button></div>
+      <label>Nuevo estatus<select id="nuevoEstadoMasivo" required><option value="">Selecciona una opción</option><option value="EN_PROCESO">En proceso</option><option value="CLASIFICADO">Clasificado</option><option value="ENVIADO">Enviado</option><option value="CON_REPARTIDOR">Ingresado a punto de venta</option><option value="ENTREGADO">Entregado</option><option value="FINALIZADO">Finalizado</option><option value="CANCELADO">Cancelado</option></select></label>
+      <p class="modal-note">El cambio se aplicará a todos los pedidos seleccionados. No se podrá finalizar un pedido con saldo pendiente.</p>
+      <div class="modal-actions"><button type="button" class="secondary" data-close="modalEstadoMasivo">Cancelar</button><button id="btnGuardarEstadoMasivo" type="submit" class="primary">Actualizar pedidos</button></div>
+    </form>
+  </dialog>
+
+  <script src="https://kit.fontawesome.com/702f509feb.js" crossorigin="anonymous"></script>
+  <script type="module" src="lista-productos.js"></script>
+</body>
+</html>

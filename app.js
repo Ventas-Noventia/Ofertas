@@ -1,16 +1,23 @@
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 import {
-  getFirestore, collection, addDoc, doc, updateDoc, getDoc, onSnapshot,
-  serverTimestamp, query, orderBy, arrayUnion
+  getFirestore, collection, addDoc, doc, updateDoc, getDoc, setDoc, onSnapshot,
+  serverTimestamp, query, orderBy, arrayUnion, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  deleteUser, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import {
+  getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
+const storage = getStorage(firebaseApp);
+const firebaseUsuariosApp = initializeApp(firebaseConfig, "gestion-usuarios");
+const authUsuarios = getAuth(firebaseUsuariosApp);
 
 const $ = selector => document.querySelector(selector);
 const lista = $("#listaSurtidos");
@@ -34,6 +41,12 @@ let escanerMovilActivo = false;
 let procesandoCodigoMovil = false;
 let pedidoEnEdicion = null;
 let productosEdicion = [];
+let clientesFrecuentes = [];
+let cancelarEscuchaClientes = null;
+let clientesPreparadosImportacion = [];
+let filtroPagadosPendientesActivo = false;
+let usuariosSistema = [];
+let cancelarEscuchaUsuarios = null;
 
 const ESTADOS = {
   EN_PROCESO: "En proceso",
@@ -79,6 +92,269 @@ function fechaPedidoTexto(s) {
   return fechaLocal(s.creadoEn);
 }
 
+function normalizarTexto(valor = "") {
+  return String(valor).trim().toLocaleLowerCase("es-MX")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function puedeAgregarClientes() {
+  const permiso = perfilActual?.permisos?.agregarClientes;
+  if (typeof permiso === "boolean") return permiso;
+  return ["admin", "vendedor", "vendor"].includes(perfilActual?.rol);
+}
+
+function puedeImportarClientes() {
+  const permiso = perfilActual?.permisos?.importarClientes;
+  if (typeof permiso === "boolean") return permiso;
+  return perfilActual?.rol === "admin";
+}
+
+function aplicarPermisoClientes() {
+  $("#btnNuevoCliente").classList.toggle("hidden", !puedeAgregarClientes());
+  $("#btnCargaClientes").classList.toggle("hidden", !puedeImportarClientes());
+}
+
+function claveUnicaCliente(cliente) {
+  const nombre = normalizarTexto(cliente.nombre);
+  const telefono = String(cliente.telefono || "").replace(/\D/g, "");
+  const direccion = normalizarTexto(cliente.direccion);
+  return `${nombre}|${telefono || direccion}`;
+}
+
+function iniciarEscuchaClientes() {
+  if (cancelarEscuchaClientes) cancelarEscuchaClientes();
+  cancelarEscuchaClientes = onSnapshot(collection(db, "clientes"), snapshot => {
+    clientesFrecuentes = snapshot.docs
+      .map(documento => ({ id: documento.id, ...documento.data() }))
+      .filter(cliente => cliente.activo !== false)
+      .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+  }, error => {
+    console.error("No se pudo cargar el catálogo de clientes:", error);
+  });
+}
+
+function ocultarResultadosClientes() {
+  $("#resultadosClientes").classList.add("hidden");
+}
+
+function renderResultadosClientes() {
+  const contenedor = $("#resultadosClientes");
+  const busqueda = normalizarTexto($("#nombreCliente").value);
+  if (!busqueda) {
+    ocultarResultadosClientes();
+    return;
+  }
+  const coincidencias = clientesFrecuentes.filter(cliente =>
+    normalizarTexto(cliente.nombre).includes(busqueda) ||
+    normalizarTexto(cliente.telefono).includes(busqueda)
+  ).slice(0, 8);
+  contenedor.innerHTML = coincidencias.length
+    ? coincidencias.map(cliente => `<button type="button" class="client-result" data-client-id="${escapeHtml(cliente.id)}">
+        <strong>${escapeHtml(cliente.nombre || "Cliente sin nombre")}</strong>
+        <small>${escapeHtml(cliente.telefono || "Sin teléfono")} · ${escapeHtml(cliente.direccion || "Sin dirección")}</small>
+      </button>`).join("")
+    : `<p class="client-empty">No se encontró un cliente frecuente.</p>`;
+  contenedor.classList.remove("hidden");
+}
+
+function seleccionarCliente(cliente) {
+  if (!cliente) return;
+  $("#clienteId").value = cliente.id || "";
+  $("#clienteTelefono").value = cliente.telefono || "";
+  $("#nombreCliente").value = cliente.nombre || "";
+  const info = $("#clienteSeleccionadoInfo");
+  info.textContent = `${cliente.telefono || "Sin teléfono"} · ${cliente.direccion || "Sin dirección"}`;
+  info.classList.remove("hidden");
+
+  if ($("#tipoOperacion").value !== "VR") {
+    const domicilio = document.querySelector('input[name="tipoEntrega"][value="DOMICILIO"]');
+    domicilio.checked = true;
+    actualizarCamposEntrega();
+    $("#ubicacion").value = cliente.direccion || "";
+  }
+  ocultarResultadosClientes();
+}
+
+function abrirNuevoCliente() {
+  if (!puedeAgregarClientes()) return alert("Tu perfil no puede agregar clientes.");
+  $("#formNuevoCliente").reset();
+  $("#nuevoClienteNombre").value = $("#nombreCliente").value.trim();
+  $("#errorNuevoCliente").classList.add("hidden");
+  $("#modalNuevoCliente").showModal();
+  setTimeout(() => $("#nuevoClienteNombre").focus(), 80);
+}
+
+async function guardarNuevoCliente(event) {
+  event.preventDefault();
+  if (!puedeAgregarClientes()) return;
+  const nombre = $("#nuevoClienteNombre").value.trim();
+  const telefono = $("#nuevoClienteTelefono").value.trim();
+  const direccion = $("#nuevoClienteDireccion").value.trim();
+  const nombreNormalizado = normalizarTexto(nombre);
+  const error = $("#errorNuevoCliente");
+  const duplicado = clientesFrecuentes.find(cliente =>
+    claveUnicaCliente(cliente) === claveUnicaCliente({ nombre, telefono, direccion })
+  );
+  if (duplicado) {
+    error.textContent = "Ya existe un cliente con ese nombre. Selecciónalo desde el buscador.";
+    error.classList.remove("hidden");
+    return;
+  }
+  const boton = $("#btnGuardarCliente");
+  boton.disabled = true;
+  boton.textContent = "Guardando…";
+  try {
+    const referencia = await addDoc(collection(db, "clientes"), {
+      nombre, telefono, direccion, nombreNormalizado, activo: true,
+      creadoPorUid: usuarioActual?.uid || "",
+      creadoPorNombre: perfilActual?.nombre || usuarioActual?.email || "",
+      creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp()
+    });
+    seleccionarCliente({ id: referencia.id, nombre, telefono, direccion });
+    $("#modalNuevoCliente").close();
+  } catch (e) {
+    console.error(e);
+    error.textContent = "No se pudo guardar el cliente. Revisa los permisos de Firestore.";
+    error.classList.remove("hidden");
+  } finally {
+    boton.disabled = false;
+    boton.textContent = "Guardar cliente";
+  }
+}
+
+function abrirCargaClientes() {
+  if (!puedeImportarClientes()) return alert("Tu perfil no puede importar clientes.");
+  clientesPreparadosImportacion = [];
+  $("#archivoClientes").value = "";
+  $("#resumenCargaClientes").classList.add("hidden");
+  $("#vistaPreviaClientes").classList.add("hidden");
+  $("#errorCargaClientes").classList.add("hidden");
+  $("#btnImportarClientes").disabled = true;
+  $("#modalCargaClientes").showModal();
+}
+
+function valorColumnaCliente(fila, nombreBuscado) {
+  const entrada = Object.entries(fila).find(([encabezado]) => normalizarTexto(encabezado) === nombreBuscado);
+  return entrada ? String(entrada[1] ?? "").trim() : "";
+}
+
+function mostrarVistaPreviaClientes(filas) {
+  const validos = filas.filter(fila => fila.estado === "VALIDO");
+  const duplicados = filas.filter(fila => fila.estado === "DUPLICADO");
+  const invalidos = filas.filter(fila => fila.estado === "INVALIDO");
+  $("#resumenCargaClientes").innerHTML = `
+    <article><strong>${validos.length}</strong><small>Listos para importar</small></article>
+    <article><strong>${duplicados.length}</strong><small>Duplicados omitidos</small></article>
+    <article><strong>${invalidos.length}</strong><small>Filas con error</small></article>`;
+  $("#resumenCargaClientes").classList.remove("hidden");
+  $("#vistaPreviaClientes").innerHTML = `<table class="client-import-table">
+    <thead><tr><th>Fila</th><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Resultado</th></tr></thead>
+    <tbody>${filas.slice(0, 100).map(fila => `<tr class="${fila.estado === "INVALIDO" ? "invalid" : fila.estado === "DUPLICADO" ? "duplicate" : ""}">
+      <td>${fila.numeroFila}</td><td>${escapeHtml(fila.nombre)}</td><td>${escapeHtml(fila.telefono || "—")}</td><td>${escapeHtml(fila.direccion)}</td><td>${escapeHtml(fila.mensaje)}</td>
+    </tr>`).join("")}</tbody></table>${filas.length > 100 ? `<p class="client-empty">Se muestran las primeras 100 filas de ${filas.length}.</p>` : ""}`;
+  $("#vistaPreviaClientes").classList.remove("hidden");
+  clientesPreparadosImportacion = validos;
+  $("#btnImportarClientes").disabled = validos.length === 0;
+}
+
+async function prepararArchivoClientes(event) {
+  const archivo = event.target.files?.[0];
+  if (!archivo) return;
+  const error = $("#errorCargaClientes");
+  error.classList.add("hidden");
+  try {
+    if (typeof XLSX === "undefined") throw new Error("No se cargó la librería para leer Excel.");
+    const datos = await archivo.arrayBuffer();
+    const libro = XLSX.read(datos, { type: "array" });
+    const hoja = libro.Sheets[libro.SheetNames[0]];
+    if (!hoja) throw new Error("El archivo no contiene una hoja válida.");
+    const registros = XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false });
+    if (!registros.length) throw new Error("El archivo está vacío o no tiene encabezados.");
+
+    const clavesExistentes = new Set(clientesFrecuentes.map(claveUnicaCliente));
+    const clavesArchivo = new Set();
+    const filas = registros.map((registro, indice) => {
+      const nombre = valorColumnaCliente(registro, "nombre");
+      const telefono = valorColumnaCliente(registro, "telefono");
+      const direccion = valorColumnaCliente(registro, "direccion");
+      const fila = { numeroFila: indice + 2, nombre, telefono, direccion, estado: "VALIDO", mensaje: "Listo" };
+      if (!nombre || !direccion) {
+        fila.estado = "INVALIDO";
+        fila.mensaje = !nombre ? "Falta nombre" : "Falta dirección";
+        return fila;
+      }
+      const clave = claveUnicaCliente(fila);
+      if (clavesExistentes.has(clave) || clavesArchivo.has(clave)) {
+        fila.estado = "DUPLICADO";
+        fila.mensaje = "Ya existe";
+        return fila;
+      }
+      clavesArchivo.add(clave);
+      return fila;
+    });
+    mostrarVistaPreviaClientes(filas);
+  } catch (e) {
+    console.error(e);
+    clientesPreparadosImportacion = [];
+    $("#btnImportarClientes").disabled = true;
+    error.textContent = e.message || "No se pudo leer el archivo.";
+    error.classList.remove("hidden");
+  }
+}
+
+async function importarClientesPreparados() {
+  if (!puedeImportarClientes()) return;
+  if (!clientesPreparadosImportacion.length) return alert("No hay clientes válidos para importar.");
+  const boton = $("#btnImportarClientes");
+  boton.disabled = true;
+  boton.textContent = "Importando…";
+  try {
+    const tamanoLote = 400;
+    for (let inicio = 0; inicio < clientesPreparadosImportacion.length; inicio += tamanoLote) {
+      const lote = clientesPreparadosImportacion.slice(inicio, inicio + tamanoLote);
+      const batch = writeBatch(db);
+      lote.forEach(cliente => {
+        const referencia = doc(collection(db, "clientes"));
+        batch.set(referencia, {
+          nombre: cliente.nombre,
+          telefono: cliente.telefono,
+          direccion: cliente.direccion,
+          nombreNormalizado: normalizarTexto(cliente.nombre),
+          activo: true,
+          origen: "IMPORTACION_EXCEL",
+          creadoPorUid: usuarioActual?.uid || "",
+          creadoPorNombre: perfilActual?.nombre || usuarioActual?.email || "",
+          creadoEn: serverTimestamp(),
+          actualizadoEn: serverTimestamp()
+        });
+      });
+      await batch.commit();
+    }
+    const total = clientesPreparadosImportacion.length;
+    clientesPreparadosImportacion = [];
+    $("#vistaPreviaClientes").innerHTML = `<p class="client-import-result"><strong>${total} clientes importados correctamente.</strong></p>`;
+    $("#btnImportarClientes").disabled = true;
+    $("#archivoClientes").value = "";
+  } catch (e) {
+    console.error(e);
+    const error = $("#errorCargaClientes");
+    error.textContent = "No se pudo completar la importación. Revisa los permisos de Firestore.";
+    error.classList.remove("hidden");
+    boton.disabled = false;
+  } finally {
+    boton.textContent = "Importar clientes";
+  }
+}
+
+function descargarPlantillaClientes() {
+  const hoja = XLSX.utils.json_to_sheet([
+    { nombre: "Ejemplo Cliente", telefono: "5512345678", direccion: "Calle, número, colonia y municipio" }
+  ]);
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, "Clientes");
+  XLSX.writeFile(libro, "plantilla-clientes.xlsx");
+}
+
 function hoyMismo(s) {
   return s.fechaPedido === fechaSoloDia() || (!s.fechaPedido && s.creadoEn &&
     (s.creadoEn.toDate ? s.creadoEn.toDate() : new Date(s.creadoEn)).toDateString() === new Date().toDateString());
@@ -89,7 +365,7 @@ function textoEstado(estado) {
 }
 
 function textoPago(pago) {
-  return pago === "PENDIENTE" ? "Pendiente de pago" : pago === "APARTADO" ? "Apartado" : pago === "PAGADO" ? "Pagado" : "Sin definir";
+  return pago === "PENDIENTE" ? "Pendiente de pago" : pago === "APARTADO" ? "Apartado" : pago === "PAGADO" ? "Pagado" : pago === "K_EFECTIVO" ? "K efectivo" : "Sin definir";
 }
 
 function establecerCargaModal(modal, activo, texto = "Guardando cambios…") {
@@ -146,9 +422,57 @@ function totalPedido(productos = []) {
   return productos.reduce((sum, p) => sum + Number(p.cantidad || 0) * Number(p.costo || 0), 0);
 }
 
+function porcentajeDescuento(valor) {
+  const numero = Number(valor || 0);
+  return Number.isInteger(numero) && numero >= 1 && numero <= 99 ? numero : 0;
+}
+
+function tipoDescuentoPedido(pedido = {}) {
+  if (["TOTAL", "PRODUCTO"].includes(pedido.tipoDescuento)) return pedido.tipoDescuento;
+  if (porcentajeDescuento(pedido.descuentoGeneral)) return "TOTAL";
+  if ((pedido.productos || []).some(p => porcentajeDescuento(p.descuentoPorcentaje))) return "PRODUCTO";
+  return "NINGUNO";
+}
+
+function descuentoProductoAplicado(producto, tipo = "NINGUNO", descuentoGeneral = 0) {
+  if (tipo === "TOTAL") return porcentajeDescuento(descuentoGeneral);
+  if (tipo === "PRODUCTO") return porcentajeDescuento(producto.descuentoPorcentaje);
+  return 0;
+}
+
+function costoUnitarioConDescuento(producto, tipo = "NINGUNO", descuentoGeneral = 0) {
+  const costo = Number(producto.costo || 0);
+  const porcentaje = descuentoProductoAplicado(producto, tipo, descuentoGeneral);
+  return Math.round(costo * (1 - porcentaje / 100) * 100) / 100;
+}
+
+function subtotalProductosConDescuento(productos = [], tipo = "NINGUNO", descuentoGeneral = 0) {
+  return productos.reduce((sum, producto) =>
+    sum + Number(producto.cantidad || 0) * costoUnitarioConDescuento(producto, tipo, descuentoGeneral), 0);
+}
+
+function resumenDescuento(productos = [], tipo = "NINGUNO", descuentoGeneral = 0) {
+  const subtotalOriginal = totalPedido(productos);
+  const subtotalConDescuento = subtotalProductosConDescuento(productos, tipo, descuentoGeneral);
+  return {
+    subtotalOriginal,
+    subtotalConDescuento,
+    montoDescuento: Math.max(0, subtotalOriginal - subtotalConDescuento)
+  };
+}
+
+function resumenDescuentoPedido(pedido = {}) {
+  return resumenDescuento(
+    pedido.productos || [],
+    tipoDescuentoPedido(pedido),
+    Number(pedido.descuentoGeneral || 0)
+  );
+}
+
 
 function metodoPagoTexto(metodo) {
   return metodo === "EFECTIVO" ? "Efectivo" :
+    metodo === "K_EFECTIVO" ? "K efectivo" :
     metodo === "TRANSFERENCIA" ? "Transferencia" : "No registrado";
 }
 
@@ -189,7 +513,7 @@ function importeDevoluciones(s) {
       return total + Number(devolucion.importeAjuste);
     }
     return total + (devolucion.productos || []).reduce((sum, producto) =>
-      sum + Number(producto.cantidadDevuelta || 0) * Number(producto.costo || 0), 0);
+      sum + Number(producto.cantidadDevuelta || 0) * Number(producto.costoAplicado ?? producto.costo ?? 0), 0);
   }, 0);
 }
 
@@ -212,8 +536,11 @@ function textoEstatusRevision(valor) {
 }
 
 function totalAjustadoPedido(s) {
-  const totalOriginal = Number(s.total || totalPedido(s.productos));
-  return Math.max(0, totalOriginal - importeDevoluciones(s));
+  const resumen = resumenDescuentoPedido(s);
+  const totalGuardado = s.total !== undefined && s.total !== null
+    ? Number(s.total)
+    : resumen.subtotalConDescuento + Number(s.costoEnvio || 0);
+  return Math.max(0, totalGuardado - importeDevoluciones(s));
 }
 
 function saldoPendiente(s) {
@@ -464,7 +791,6 @@ function consultarCaja() {
   const transferencia = movimientosCajaActuales
     .filter(m => m.tipo === "INGRESO" && m.metodo === "TRANSFERENCIA")
     .reduce((sum, m) => sum + m.importe, 0);
-
   const ingresos = movimientosCajaActuales
     .filter(m => m.tipo === "INGRESO")
     .reduce((sum, m) => sum + m.importe, 0);
@@ -558,7 +884,7 @@ function exportarCaja() {
     Importe: m.importe,
     Vendedor: m.vendedor,
     Responsable: m.responsable,
-    Ubicación: m.ubicacion,
+    Ubicaciòn: m.ubicacion,
     "Estado del pedido": m.estadoPedido,
     "Estatus de pago": m.estatusPago
   }));
@@ -569,7 +895,9 @@ function exportarCaja() {
   const transferencia = movimientosCajaActuales
     .filter(m => m.tipo === "INGRESO" && m.metodo === "TRANSFERENCIA")
     .reduce((sum, m) => sum + m.importe, 0);
-  const ingresos = efectivo + transferencia;
+  const ingresos = movimientosCajaActuales
+    .filter(m => m.tipo === "INGRESO")
+    .reduce((sum, m) => sum + m.importe, 0);
   const devoluciones = Math.abs(
     movimientosCajaActuales
       .filter(m => ["DEVOLUCION", "CANCELACION"].includes(m.tipo))
@@ -604,7 +932,9 @@ function imprimirCaja() {
   const transferencia = movimientosCajaActuales
     .filter(m => m.tipo === "INGRESO" && m.metodo === "TRANSFERENCIA")
     .reduce((sum, m) => sum + m.importe, 0);
-  const ingresos = efectivo + transferencia;
+  const ingresos = movimientosCajaActuales
+    .filter(m => m.tipo === "INGRESO")
+    .reduce((sum, m) => sum + m.importe, 0);
   const devoluciones = Math.abs(
     movimientosCajaActuales
       .filter(m => ["DEVOLUCION", "CANCELACION"].includes(m.tipo))
@@ -1037,7 +1367,12 @@ function aplicarPermisos() {
     perfilActual?.nombre || usuarioActual?.email || "Usuario";
 
   $("#usuarioRol").textContent =
-    esAdmin ? "Administrador" : "Vendedor";
+    esAdmin ? "Administrador" : String(perfilActual?.rol || "Usuario").replaceAll("_", " ");
+  const tieneFoto = Boolean(perfilActual?.fotoUrl);
+  $("#usuarioFoto").classList.toggle("hidden", !tieneFoto);
+  $("#usuarioFotoIcono").classList.toggle("hidden", tieneFoto);
+  if (tieneFoto) $("#usuarioFoto").src = perfilActual.fotoUrl;
+  aplicarPermisoClientes();
 }
 
 async function cargarPerfilUsuario(user) {
@@ -1051,8 +1386,8 @@ async function cargarPerfilUsuario(user) {
   }
 
   const perfil = snapshot.data();
-  if (!["admin", "vendedor"].includes(perfil.rol)) {
-    throw new Error("El rol asignado a esta cuenta no es válido.");
+  if (!perfil.rol || typeof perfil.rol !== "string") {
+    throw new Error("Esta cuenta no tiene un rol válido asignado.");
   }
 
   if (perfil.activo === false) {
@@ -1060,6 +1395,147 @@ async function cargarPerfilUsuario(user) {
   }
 
   return perfil;
+}
+
+function textoRolUsuario(rol) {
+  return rol === "admin" ? "Administrador" : "Vendedor";
+}
+
+function mostrarErrorGestionUsuarios(mensaje = "") {
+  const elemento = $("#errorGestionUsuarios");
+  elemento.textContent = mensaje;
+  elemento.classList.toggle("hidden", !mensaje);
+}
+
+function renderUsuariosSistema() {
+  const contenedor = $("#listaUsuarios");
+  if (!usuariosSistema.length) {
+    contenedor.innerHTML = '<div class="empty">No hay cuentas registradas para mostrar.</div>';
+    return;
+  }
+
+  contenedor.innerHTML = "";
+  for (const usuario of usuariosSistema) {
+    const fila = document.createElement("div");
+    fila.className = "user-row";
+    const activo = usuario.activo !== false;
+    fila.innerHTML = `
+      <span class="user-photo">${usuario.fotoUrl ? `<img src="${escapeHtml(usuario.fotoUrl)}" alt="Foto de ${escapeHtml(usuario.nombre || "usuario")}">` : '<i class="fa-solid fa-user"></i>'}</span>
+      <div><strong>${escapeHtml(usuario.nombre || "Sin nombre")}</strong><small>Vendedor automático</small></div>
+      <div><strong>${escapeHtml(usuario.correo || "Sin correo")}</strong><small>ID: ${escapeHtml(usuario.idFirestore)}</small></div>
+      <span class="user-role">${escapeHtml(textoRolUsuario(usuario.rol))}</span>
+      <button type="button" class="${activo ? "danger" : "secondary"}">${activo ? "Desactivar" : "Activar"}</button>`;
+
+    const boton = fila.querySelector("button");
+    if (usuario.idFirestore === usuarioActual?.uid) {
+      boton.disabled = true;
+      boton.title = "No puedes desactivar tu propia cuenta";
+    }
+    boton.addEventListener("click", async () => {
+      if (!confirm(`¿Deseas ${activo ? "desactivar" : "activar"} la cuenta de ${usuario.nombre || usuario.correo}?`)) return;
+      boton.disabled = true;
+      try {
+        await updateDoc(doc(db, "usuarios", usuario.idFirestore), {
+          activo: !activo,
+          actualizadoEn: serverTimestamp(),
+          actualizadoPorUid: usuarioActual?.uid || ""
+        });
+      } catch (error) {
+        console.error(error);
+        alert("No se pudo actualizar la cuenta. Revisa los permisos de Firestore.");
+        boton.disabled = false;
+      }
+    });
+    contenedor.appendChild(fila);
+  }
+}
+
+function iniciarEscuchaUsuarios() {
+  if (cancelarEscuchaUsuarios) cancelarEscuchaUsuarios();
+  cancelarEscuchaUsuarios = onSnapshot(collection(db, "usuarios"), snapshot => {
+    usuariosSistema = snapshot.docs
+      .map(documento => ({ idFirestore: documento.id, ...documento.data() }))
+      .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+    renderUsuariosSistema();
+  }, error => {
+    console.error(error);
+    mostrarErrorGestionUsuarios("No se pudieron consultar las cuentas. Revisa los permisos de Firestore.");
+  });
+}
+
+function abrirGestionUsuarios() {
+  if (perfilActual?.rol !== "admin") return alert("Solo el administrador puede gestionar cuentas.");
+  mostrarErrorGestionUsuarios("");
+  $("#modalGestionUsuarios").showModal();
+}
+
+async function crearUsuarioSistema(event) {
+  event.preventDefault();
+  if (perfilActual?.rol !== "admin") return;
+
+  const nombre = $("#nuevoUsuarioNombre").value.trim();
+  const correo = $("#nuevoUsuarioCorreo").value.trim().toLowerCase();
+  const rol = $("#nuevoUsuarioRol").value;
+  const contrasena = $("#nuevoUsuarioContrasena").value;
+  const foto = $("#nuevoUsuarioFoto").files[0] || null;
+  const boton = $("#btnCrearUsuario");
+  let cuentaCreada = null;
+  let referenciaFoto = null;
+
+  if (foto && !["image/jpeg", "image/png", "image/webp"].includes(foto.type)) {
+    return mostrarErrorGestionUsuarios("La imagen debe ser JPG, PNG o WebP.");
+  }
+  if (foto && foto.size > 2 * 1024 * 1024) {
+    return mostrarErrorGestionUsuarios("La imagen de perfil no debe superar 2 MB.");
+  }
+
+  mostrarErrorGestionUsuarios("");
+  boton.disabled = true;
+  boton.textContent = "Creando…";
+
+  try {
+    const credencial = await createUserWithEmailAndPassword(authUsuarios, correo, contrasena);
+    cuentaCreada = credencial.user;
+    let fotoUrl = "";
+    if (foto) {
+      const extension = foto.type === "image/png" ? "png" : foto.type === "image/webp" ? "webp" : "jpg";
+      referenciaFoto = storageRef(storage, `perfiles/${cuentaCreada.uid}/perfil.${extension}`);
+      await uploadBytes(referenciaFoto, foto, { contentType: foto.type });
+      fotoUrl = await getDownloadURL(referenciaFoto);
+    }
+    await setDoc(doc(db, "usuarios", cuentaCreada.uid), {
+      nombre,
+      correo,
+      rol,
+      fotoUrl,
+      activo: true,
+      creadoEn: serverTimestamp(),
+      creadoPorUid: usuarioActual?.uid || "",
+      creadoPorNombre: perfilActual?.nombre || usuarioActual?.email || ""
+    });
+    $("#formNuevoUsuario").reset();
+    $("#nuevoUsuarioRol").value = "vendedor";
+    alert("La cuenta se creó correctamente. El nombre se usará como vendedor automático.");
+  } catch (error) {
+    console.error(error);
+    if (cuentaCreada) {
+      try { await deleteUser(cuentaCreada); } catch (cleanupError) { console.error(cleanupError); }
+    }
+    if (referenciaFoto) {
+      try { await deleteObject(referenciaFoto); } catch (cleanupError) { console.error(cleanupError); }
+    }
+    const mensajes = {
+      "auth/email-already-in-use": "Ya existe una cuenta con ese correo.",
+      "auth/invalid-email": "El correo electrónico no es válido.",
+      "auth/weak-password": "La contraseña debe contener al menos 6 caracteres.",
+      "auth/network-request-failed": "No se pudo conectar con Firebase."
+    };
+    mostrarErrorGestionUsuarios(mensajes[error.code] || "No se pudo crear la cuenta. Revisa los permisos de Firebase.");
+  } finally {
+    await signOut(authUsuarios).catch(() => {});
+    boton.disabled = false;
+    boton.innerHTML = '<i class="fa-solid fa-user-plus"></i> Crear cuenta';
+  }
 }
 
 function iniciarEscuchaPedidos() {
@@ -1123,6 +1599,16 @@ onAuthStateChanged(auth, async user => {
       cancelarEscuchaSurtidos();
       cancelarEscuchaSurtidos = null;
     }
+    if (cancelarEscuchaClientes) {
+      cancelarEscuchaClientes();
+      cancelarEscuchaClientes = null;
+    }
+    if (cancelarEscuchaUsuarios) {
+      cancelarEscuchaUsuarios();
+      cancelarEscuchaUsuarios = null;
+    }
+    clientesFrecuentes = [];
+    usuariosSistema = [];
 
     $("#aplicacion").classList.add("hidden");
     $("#pantallaLogin").classList.remove("hidden");
@@ -1141,12 +1627,48 @@ onAuthStateChanged(auth, async user => {
       `Conectado como ${perfilActual.nombre || user.email}. Los cambios se guardan automáticamente.`;
 
     iniciarEscuchaPedidos();
+    iniciarEscuchaClientes();
+    if (perfilActual?.rol === "admin") iniciarEscuchaUsuarios();
   } catch (error) {
     console.error(error);
     await signOut(auth);
     mostrarErrorLogin(error.message || "La cuenta no está autorizada.");
   }
 });
+function pedidoPagadoPendienteEnvio(s) {
+  return s.eliminado !== true &&
+    s.tipoOperacion !== "VR" &&
+    s.estado !== "FINALIZADO" &&
+    !["ENVIADO", "CON_REPARTIDOR", "ENTREGADO"].includes(s.estado) &&
+    (s.estatusPago === "PAGADO" || saldoPendiente(s) <= 0.009);
+}
+
+function prioridadEstadoListado(s) {
+  if (s.estado === "FINALIZADO") return 2;
+  if (s.estado === "ENTREGADO") return 1;
+  return 0;
+}
+
+function actualizarAlertaPagadosPendientes() {
+  const pendientes = surtidos.filter(pedidoPagadoPendienteEnvio);
+  const alerta = $("#alertaPedidosPagados");
+  alerta.classList.toggle("hidden", pendientes.length === 0);
+
+  if (!pendientes.length) {
+    filtroPagadosPendientesActivo = false;
+    return;
+  }
+
+  $("#tituloAlertaPagados").textContent = pendientes.length === 1
+    ? "1 pedido pagado pendiente de envío"
+    : `${pendientes.length} pedidos pagados pendientes de envío`;
+  $("#textoAlertaPagados").textContent =
+    "Requieren preparación o cambio de estatus antes de enviarse.";
+  $("#btnVerPagadosPendientes").textContent =
+    filtroPagadosPendientesActivo ? "Mostrar todos" : "Ver pedidos";
+  alerta.classList.toggle("is-filtering", filtroPagadosPendientesActivo);
+}
+
 function renderLista() {
   const texto = $("#buscador").value.trim().toLowerCase();
   const filtro = $("#filtroEstado").value;
@@ -1154,7 +1676,7 @@ function renderLista() {
   const filtroMetodo = $("#filtroMetodo").value;
   const filtroDevolucion = $("#filtroDevolucion").value;
 
-  const filtrados = surtidos.filter(s => {
+  let filtrados = surtidos.filter(s => {
     if (s.eliminado === true) return false;
     const contenido = [
       s.folio, s.nombreCliente, s.ubicacion, s.responsable, s.vendedor,
@@ -1176,6 +1698,12 @@ function renderLista() {
       coincideDevolucion;
   });
 
+  if (filtroPagadosPendientesActivo) {
+    filtrados = filtrados.filter(pedidoPagadoPendienteEnvio);
+  }
+  filtrados.sort((a, b) => prioridadEstadoListado(a) - prioridadEstadoListado(b));
+
+  actualizarAlertaPagadosPendientes();
   lista.innerHTML = "";
   $("#sinResultados").classList.toggle("hidden", filtrados.length > 0);
 
@@ -1200,7 +1728,7 @@ function renderLista() {
             : "Pedido";
 
     nodo.querySelector(".card-location").textContent =
-      `${tipoOperacionTexto} · Ubicación: ${s.ubicacion || "Sin ubicación"}`;
+      `${tipoOperacionTexto} · Ubicación: ${s.ubicacion || "Sin Ubicación"}`;
     const vencimiento = textoVencimiento(s);
     nodo.querySelector(".card-payment").innerHTML =
       `Pago: <strong>${escapeHtml(textoPago(s.estatusPago))}</strong> · Total ajustado: ${moneda(totalAjustadoPedido(s))} · Pagado: ${moneda(totalPagado(s))} · Saldo: ${moneda(saldoPendiente(s))}
@@ -1209,6 +1737,10 @@ function renderLista() {
       `${s.productos?.length || 0} productos · ${totalPiezas(s.productos)} piezas${(s.devoluciones || []).length ? " · Con devolución" : ""}`;
 
     const tarjeta = nodo.querySelector(".card");
+    const pendienteEnvio = pedidoPagadoPendienteEnvio(s);
+    nodo.querySelector(".card-shipping-alert").classList.toggle("hidden", !pendienteEnvio);
+    tarjeta.classList.toggle("paid-pending-shipment", pendienteEnvio);
+    tarjeta.classList.toggle("finalized-order-card", s.estado === "FINALIZADO");
     if (s.estado === "FINALIZADO" && (s.devoluciones || []).length) {
       tarjeta.classList.add("finalized-return-card");
     }
@@ -1266,12 +1798,15 @@ function snapshotEditablePedido(s) {
     estatusPago: s.estatusPago || "PENDIENTE",
     ubicacion: s.ubicacion || "",
     costoEnvio: Number(s.costoEnvio || 0),
+    tipoDescuento: tipoDescuentoPedido(s),
+    descuentoGeneral: Number(s.descuentoGeneral || 0),
     productos: (s.productos || []).map(p => ({
       idLinea: p.idLinea || crypto.randomUUID(),
       clave: p.clave || "",
       nombre: p.nombre || "",
       costo: Number(p.costo || 0),
-      cantidad: Number(p.cantidad || 1)
+      cantidad: Number(p.cantidad || 1),
+      descuentoPorcentaje: Number(p.descuentoPorcentaje || 0)
     }))
   };
 }
@@ -1281,6 +1816,7 @@ function renderProductosEdicion() {
   contenedor.innerHTML = "";
 
   productosEdicion.forEach((producto, index) => {
+    const modoProducto = $("#editarTipoDescuento").value === "PRODUCTO";
     const fila = document.createElement("div");
     fila.className = "edit-product-row";
     fila.innerHTML = `
@@ -1288,6 +1824,7 @@ function renderProductosEdicion() {
       <label>Producto<input class="edit-product-name" value="${escapeHtml(producto.nombre)}" maxlength="180" required></label>
       <label>Costo<input class="edit-product-cost" type="number" min="0.01" step="0.01" value="${Number(producto.costo || 0)}" required></label>
       <label>Cantidad<input class="edit-product-qty" type="number" min="1" step="1" value="${Number(producto.cantidad || 1)}" required></label>
+      <label class="edit-product-discount ${modoProducto ? "" : "hidden"}">Descuento %<input class="edit-product-discount-input" type="number" min="0" max="99" step="1" value="${Number(producto.descuentoPorcentaje || 0)}"></label>
       <button type="button" class="danger edit-product-remove" title="Quitar producto"><i class="fa-solid fa-trash"></i></button>`;
 
     const sincronizar = () => {
@@ -1295,6 +1832,7 @@ function renderProductosEdicion() {
       producto.nombre = fila.querySelector(".edit-product-name").value.trim();
       producto.costo = Number(fila.querySelector(".edit-product-cost").value || 0);
       producto.cantidad = Number(fila.querySelector(".edit-product-qty").value || 0);
+      producto.descuentoPorcentaje = Number(fila.querySelector(".edit-product-discount-input").value || 0);
       actualizarTotalEdicion();
     };
     fila.querySelectorAll("input").forEach(input => input.addEventListener("input", sincronizar));
@@ -1309,9 +1847,22 @@ function renderProductosEdicion() {
 }
 
 function actualizarTotalEdicion() {
-  const subtotal = totalPedido(productosEdicion);
+  const tipo = $("#editarTipoDescuento").value || "NINGUNO";
+  const descuentoGeneral = tipo === "TOTAL" ? Number($("#editarDescuentoGeneral").value || 0) : 0;
+  const resumen = resumenDescuento(productosEdicion, tipo, descuentoGeneral);
   const envio = Number($("#editarCostoEnvio")?.value || 0);
-  $("#totalEditarPedido").textContent = moneda(subtotal + Math.max(0, envio));
+  $("#editarSubtotalOriginal").textContent = moneda(resumen.subtotalOriginal);
+  $("#editarMontoDescuento").textContent = `-${moneda(resumen.montoDescuento)}`;
+  $("#editarResumenEnvio").textContent = moneda(Math.max(0, envio));
+  $("#totalEditarPedido").textContent = moneda(resumen.subtotalConDescuento + Math.max(0, envio));
+}
+
+function actualizarModoDescuentoEdicion() {
+  const tipo = $("#editarTipoDescuento").value;
+  $("#editarCampoDescuentoGeneral").classList.toggle("hidden", tipo !== "TOTAL");
+  if (tipo !== "TOTAL") $("#editarDescuentoGeneral").value = "";
+  renderProductosEdicion();
+  actualizarTotalEdicion();
 }
 
 function abrirEdicionPedido(s) {
@@ -1323,11 +1874,14 @@ function abrirEdicionPedido(s) {
   $("#editarNombreCliente").value = s.nombreCliente || "";
   $("#editarVendedor").value = s.vendedor || "";
   $("#editarResponsable").value = s.responsable || "";
-  // $("#editarTipoOperacion").value = s.tipoOperacion || "ALM";
+  $("#editarTipoOperacion").value = s.tipoOperacion || "ALM";
   $("#editarEstado").value = s.estado || "EN_PROCESO";
   $("#editarEstatusPago").value = s.estatusPago || "PENDIENTE";
   $("#editarUbicacion").value = s.ubicacion || "";
   $("#editarCostoEnvio").value = Number(s.costoEnvio || 0);
+  $("#editarTipoDescuento").value = tipoDescuentoPedido(s);
+  $("#editarDescuentoGeneral").value = porcentajeDescuento(s.descuentoGeneral) || "";
+  $("#editarCampoDescuentoGeneral").classList.toggle("hidden", tipoDescuentoPedido(s) !== "TOTAL");
   $("#motivoEdicionPedido").value = "";
   renderProductosEdicion();
   actualizarTotalEdicion();
@@ -1340,6 +1894,11 @@ function validarProductosEdicion() {
     if (!String(p.nombre || "").trim()) return "Todos los productos deben tener nombre.";
     if (!Number.isFinite(Number(p.costo)) || Number(p.costo) <= 0) return "Todos los productos deben tener un costo mayor a cero.";
     if (!Number.isInteger(Number(p.cantidad)) || Number(p.cantidad) < 1) return "Todas las cantidades deben ser números enteros mayores a cero.";
+    const descuento = Number(p.descuentoPorcentaje || 0);
+    if (!Number.isInteger(descuento) || descuento < 0 || descuento > 99) return "El descuento por producto debe ser un número entero entre 1 y 99, o 0 para no aplicar.";
+  }
+  if ($("#editarTipoDescuento").value === "TOTAL" && !porcentajeDescuento($("#editarDescuentoGeneral").value)) {
+    return "El descuento general debe ser un número entero entre 1 y 99.";
   }
   return "";
 }
@@ -1347,9 +1906,9 @@ function validarProductosEdicion() {
 function generarCambiosPedido(antes, despues) {
   const etiquetas = {
     nombreCliente: "Cliente", vendedor: "Vendedor", responsable: "Responsable",
-    // tipoOperacion: "Tipo de operación",
-     estado: "Estado", estatusPago: "Estatus de pago",
-    ubicacion: "Ubicación", costoEnvio: "Costo de envío"
+    tipoOperacion: "Tipo de operación", estado: "Estado", estatusPago: "Estatus de pago",
+    ubicacion: "Ubicación", costoEnvio: "Costo de envío",
+    tipoDescuento: "Tipo de descuento", descuentoGeneral: "Descuento general"
   };
   const cambios = [];
   for (const campo of Object.keys(etiquetas)) {
@@ -1383,19 +1942,24 @@ async function guardarEdicionPedido(event) {
     nombreCliente: $("#editarNombreCliente").value.trim(),
     vendedor: $("#editarVendedor").value.trim(),
     responsable: $("#editarResponsable").value,
-    // tipoOperacion: $("#editarTipoOperacion").value,
+    tipoOperacion: $("#editarTipoOperacion").value,
     estado: $("#editarEstado").value,
     estatusPago: $("#editarEstatusPago").value,
     ubicacion: $("#editarUbicacion").value.trim(),
     costoEnvio,
-    productos: productosEdicion.map(p => ({ ...p, clave: limpiarClaveProducto(p.clave), nombre: p.nombre.trim(), costo: Number(p.costo), cantidad: Number(p.cantidad) }))
+    tipoDescuento: $("#editarTipoDescuento").value,
+    descuentoGeneral: $("#editarTipoDescuento").value === "TOTAL" ? Number($("#editarDescuentoGeneral").value || 0) : 0,
+    productos: productosEdicion.map(p => ({ ...p, clave: limpiarClaveProducto(p.clave), nombre: p.nombre.trim(), costo: Number(p.costo), cantidad: Number(p.cantidad), descuentoPorcentaje: $("#editarTipoDescuento").value === "PRODUCTO" ? Number(p.descuentoPorcentaje || 0) : 0 }))
   };
   if (!despues.nombreCliente || !despues.vendedor || !despues.responsable) return alert("Completa cliente, vendedor y responsable.");
 
+  const resumen = resumenDescuento(despues.productos, despues.tipoDescuento, despues.descuentoGeneral);
+  const subtotalProductos = resumen.subtotalConDescuento;
+  const total = subtotalProductos + costoEnvio;
+  const pagadoActual = totalPagado(pedidoEnEdicion);
+  despues.estatusPago = pagadoActual >= total - 0.009 ? "PAGADO" : pagadoActual > 0 ? "APARTADO" : "PENDIENTE";
   const cambios = generarCambiosPedido(antes, despues);
   if (!cambios.length) return alert("No se detectaron cambios.");
-  const subtotalProductos = totalPedido(despues.productos);
-  const total = subtotalProductos + costoEnvio;
   const historial = {
     tipo: ["ENTREGADO", "FINALIZADO"].includes(pedidoEnEdicion.estado) ? "PEDIDO_REABIERTO_Y_EDITADO" : "PEDIDO_EDITADO",
     detalle: motivo,
@@ -1409,7 +1973,9 @@ async function guardarEdicionPedido(event) {
     establecerCargaModal($("#modalEditarPedido"), true, "Guardando cambios…");
     await updateDoc(doc(db, "surtidos", pedidoEnEdicion.idFirestore), {
       ...despues,
+      subtotalProductosOriginal: resumen.subtotalOriginal,
       subtotalProductos,
+      descuentoTotal: resumen.montoDescuento,
       total,
       actualizadoEn: serverTimestamp(),
       actualizadoPorUid: usuarioActual?.uid || "",
@@ -1468,24 +2034,52 @@ function costoEnvioNuevo() {
 }
 
 function totalNuevoPedido() {
-  return totalPedido(productosNuevo) + costoEnvioNuevo();
+  const tipo = $("#tipoDescuento").value || "NINGUNO";
+  const descuentoGeneral = tipo === "TOTAL" ? Number($("#descuentoGeneral").value || 0) : 0;
+  return subtotalProductosConDescuento(productosNuevo, tipo, descuentoGeneral) + costoEnvioNuevo();
 }
 
 function actualizarTotalNuevo() {
-  $("#totalNuevo").textContent = moneda(totalNuevoPedido());
+  const tipo = $("#tipoDescuento").value || "NINGUNO";
+  const descuentoGeneral = tipo === "TOTAL" ? Number($("#descuentoGeneral").value || 0) : 0;
+  const resumen = resumenDescuento(productosNuevo, tipo, descuentoGeneral);
+  const envio = costoEnvioNuevo();
+  $("#subtotalOriginalNuevo").textContent = moneda(resumen.subtotalOriginal);
+  $("#descuentoNuevo").textContent = `-${moneda(resumen.montoDescuento)}`;
+  $("#envioNuevo").textContent = moneda(envio);
+  $("#totalNuevo").textContent = moneda(resumen.subtotalConDescuento + envio);
+}
+
+function actualizarModoDescuentoNuevo() {
+  const tipo = $("#tipoDescuento").value;
+  $("#campoDescuentoGeneral").classList.toggle("hidden", tipo !== "TOTAL");
+  $("#campoDescuentoProducto").classList.toggle("hidden", tipo !== "PRODUCTO");
+  if (tipo !== "TOTAL") $("#descuentoGeneral").value = "";
+  if (tipo !== "PRODUCTO") $("#productoDescuento").value = "";
+  renderProductosNuevo();
+  actualizarTotalNuevo();
 }
 
 function renderProductosNuevo() {
   const cont = $("#productosNuevo");
   cont.innerHTML = "";
   productosNuevo.forEach((p, index) => {
+    const tipo = $("#tipoDescuento").value || "NINGUNO";
+    const general = tipo === "TOTAL" ? Number($("#descuentoGeneral").value || 0) : 0;
+    const descuento = descuentoProductoAplicado(p, tipo, general);
+    const costoNeto = costoUnitarioConDescuento(p, tipo, general);
     const row = document.createElement("div");
-    row.className = "product-row";
+    row.className = `product-row ${tipo === "PRODUCTO" ? "with-discount-input" : ""}`;
     row.innerHTML = `
       <div><strong>${escapeHtml(p.nombre)}</strong><br><small>${escapeHtml(p.clave || "Sin clave")}</small></div>
-      <span>${moneda(p.costo)} c/u</span>
+      <span>${descuento ? `<span class="price-original">${moneda(p.costo)}</span><br>${moneda(costoNeto)} c/u<br><small class="discount-badge">-${descuento}%</small>` : `${moneda(p.costo)} c/u`}</span>
       <span>${p.cantidad} pza.</span>
+      ${tipo === "PRODUCTO" ? `<label class="inline-product-discount">Descuento %<input type="number" min="0" max="99" step="1" value="${Number(p.descuentoPorcentaje || 0)}"></label>` : ""}
       <button type="button" class="danger">Quitar</button>`;
+    row.querySelector(".inline-product-discount input")?.addEventListener("input", event => {
+      p.descuentoPorcentaje = Number(event.target.value || 0);
+      actualizarTotalNuevo();
+    });
     row.querySelector("button").addEventListener("click", () => {
       productosNuevo.splice(index, 1);
       renderProductosNuevo();
@@ -1506,10 +2100,12 @@ function agregarProducto() {
   const nombre = $("#productoNombre").value.trim();
   const costo = Number($("#productoCosto").value);
   const cantidad = Number($("#productoCantidad").value);
+  const descuento = Number($("#productoDescuento").value || 0);
 
   if (!nombre) return alert("Escribe el nombre del producto.");
   if (!Number.isFinite(costo) || costo <= 0) return alert("El costo debe ser mayor a cero.");
   if (!Number.isInteger(cantidad) || cantidad < 1) return alert("La cantidad debe ser un número entero mayor a cero.");
+  if (!Number.isInteger(descuento) || descuento < 0 || descuento > 99) return alert("El descuento debe ser un número entero entre 1 y 99, o 0 para no aplicar.");
 
   const claveNormalizada = limpiarClaveProducto(clave);
   const nombreNormalizado = nombre.trim().toLowerCase();
@@ -1531,6 +2127,7 @@ function agregarProducto() {
   if (productoExistente) {
     productoExistente.cantidad =
       Number(productoExistente.cantidad || 0) + cantidad;
+    if ($("#tipoDescuento").value === "PRODUCTO") productoExistente.descuentoPorcentaje = descuento;
 
     // The first registered name and price are preserved.
     // Only the quantity is accumulated when the same product is scanned again.
@@ -1540,7 +2137,8 @@ function agregarProducto() {
       clave,
       nombre,
       costo,
-      cantidad
+      cantidad,
+      descuentoPorcentaje: $("#tipoDescuento").value === "PRODUCTO" ? descuento : 0
     });
   }
 
@@ -1548,6 +2146,7 @@ function agregarProducto() {
   $("#productoNombre").value = "";
   $("#productoCosto").value = "";
   $("#productoCantidad").value = "1";
+  $("#productoDescuento").value = "";
   $("#productoClave").focus();
   renderProductosNuevo();
   actualizarTotalNuevo();
@@ -1557,6 +2156,20 @@ function validarPedido() {
   const tipoOperacion = $("#tipoOperacion").value;
   const esVentaRapida = tipoOperacion === "VR";
   const tipoEntrega = document.querySelector('input[name="tipoEntrega"]:checked')?.value;
+  const tipoDescuento = $("#tipoDescuento").value;
+
+  if (tipoDescuento === "TOTAL" && !porcentajeDescuento($("#descuentoGeneral").value)) {
+    alert("El descuento general debe ser un número entero entre 1 y 99.");
+    $("#descuentoGeneral").focus();
+    return false;
+  }
+  if (tipoDescuento === "PRODUCTO" && productosNuevo.some(p => {
+    const valor = Number(p.descuentoPorcentaje || 0);
+    return !Number.isInteger(valor) || valor < 0 || valor > 99;
+  })) {
+    alert("Los descuentos por producto deben ser números enteros entre 1 y 99, o 0 para no aplicar.");
+    return false;
+  }
 
   if (!esVentaRapida) {
     if (!tipoEntrega) {
@@ -1608,14 +2221,14 @@ function validarPedido() {
     return false;
   }
   const total = totalNuevoPedido();
-  if ($("#estatusPago").value === "APARTADO") {
-    const apartado = Number($("#montoApartado").value);
-    if (!Number.isFinite(apartado) || apartado <= 0) {
-      alert("Escribe una cantidad válida para el apartado.");
+  if (["APARTADO", "K_EFECTIVO"].includes($("#estatusPago").value)) {
+    const montoInicial = Number($("#montoApartado").value);
+    if (!Number.isFinite(montoInicial) || montoInicial <= 0) {
+      alert("Escribe una cantidad válida para el primer pago.");
       return false;
     }
-    if (apartado > total) {
-      alert("El apartado no puede ser mayor al total del pedido.");
+    if (montoInicial > total) {
+      alert("El primer pago no puede ser mayor al total del pedido.");
       return false;
     }
   }
@@ -1629,16 +2242,24 @@ async function guardarPedido(imprimir) {
   const estatusPago = $("#estatusPago").value;
   const estado = tipoOperacion === "VR" ? "FINALIZADO" : $("#estadoInicial").value;
   const costoEnvio = tipoOperacion === "VR" ? 0 : costoEnvioNuevo();
-  const totalProductos = totalPedido(productosNuevo);
+  const tipoDescuento = $("#tipoDescuento").value || "NINGUNO";
+  const descuentoGeneral = tipoDescuento === "TOTAL" ? Number($("#descuentoGeneral").value || 0) : 0;
+  const productosGuardados = productosNuevo.map(producto => ({
+    ...producto,
+    descuentoPorcentaje: tipoDescuento === "PRODUCTO" ? Number(producto.descuentoPorcentaje || 0) : 0
+  }));
+  const resumen = resumenDescuento(productosGuardados, tipoDescuento, descuentoGeneral);
+  const totalProductos = resumen.subtotalConDescuento;
   const total = totalProductos + costoEnvio;
   const tienePagoInicial = estatusPago !== "PENDIENTE";
-  const montoInicial = estatusPago === "APARTADO"
+  const montoInicial = ["APARTADO", "K_EFECTIVO"].includes(estatusPago)
     ? Number($("#montoApartado").value)
     : estatusPago === "PAGADO" ? total : 0;
+  const metodoInicial = $("#metodoPagoInicial").value;
   const pagoInicial = tienePagoInicial ? {
     id: crypto.randomUUID(),
     monto: montoInicial,
-    metodo: $("#metodoPagoInicial").value,
+    metodo: metodoInicial,
     fecha: $("#fechaPagoInicial").value,
     fechaISO: new Date().toISOString()
   } : null;
@@ -1648,6 +2269,8 @@ async function guardarPedido(imprimir) {
     fechaPedido: $("#fechaPedido").value,
     tipoOperacion,
     nombreCliente: $("#nombreCliente").value.trim(),
+    clienteId: $("#clienteId").value || "",
+    clienteTelefono: $("#clienteTelefono").value || "",
     tipoEntrega: tipoOperacion === "VR"
       ? "VENTA_RAPIDA"
       : document.querySelector('input[name="tipoEntrega"]:checked').value,
@@ -1661,11 +2284,15 @@ async function guardarPedido(imprimir) {
     vendedor: $("#vendedor").value.trim(),
     estatusPago,
     montoApartado: montoInicial,
-    metodoPago: pagoInicial?.metodo || "",
+    metodoPago: metodoInicial,
     fechaPago: pagoInicial?.fecha || "",
     pagos: pagoInicial ? [pagoInicial] : [],
-    productos: productosNuevo,
+    productos: productosGuardados,
+    tipoDescuento,
+    descuentoGeneral,
+    subtotalProductosOriginal: resumen.subtotalOriginal,
     subtotalProductos: totalProductos,
+    descuentoTotal: resumen.montoDescuento,
     costoEnvio,
     total,
     estado,
@@ -1701,13 +2328,19 @@ function abrirDetalle(s) {
   $("#detalleId").textContent = s.folio || "Pedido";
   $("#detalleFecha").textContent = fechaPedidoTexto(s);
 
-  const productosHtml = (s.productos || []).map(p => `
+  const tipoDescuento = tipoDescuentoPedido(s);
+  const resumenPedido = resumenDescuentoPedido(s);
+  const productosHtml = (s.productos || []).map(p => {
+    const descuento = descuentoProductoAplicado(p, tipoDescuento, Number(s.descuentoGeneral || 0));
+    const costoNeto = costoUnitarioConDescuento(p, tipoDescuento, Number(s.descuentoGeneral || 0));
+    return `
     <div class="product-row">
       <div><strong>${escapeHtml(p.nombre)}</strong><br><small>${escapeHtml(p.clave || "Sin clave")}</small></div>
-      <span>${moneda(p.costo || 0)} c/u</span>
+      <span>${descuento ? `<span class="price-original">${moneda(p.costo || 0)}</span><br>${moneda(costoNeto)} c/u<br><small class="discount-badge">-${descuento}%</small>` : `${moneda(p.costo || 0)} c/u`}</span>
       <span>${p.cantidad} pza.</span>
-      <strong>${moneda(Number(p.cantidad || 0) * Number(p.costo || 0))}</strong>
-    </div>`).join("");
+      <strong>${moneda(Number(p.cantidad || 0) * costoNeto)}</strong>
+    </div>`;
+  }).join("");
 
   const devolucionesHtml = (s.devoluciones || []).map(d => `
     <div class="history-item">
@@ -1743,9 +2376,12 @@ function abrirDetalle(s) {
           : textoEstado(s.estado)
       }</strong></div>
       <div><small>Pago</small><strong>${textoPago(s.estatusPago)}</strong></div>
-      <div><small>Subtotal de productos</small><strong>${moneda(Number(s.subtotalProductos ?? totalPedido(s.productos)))}</strong></div>
+      <div><small>Subtotal original</small><strong>${moneda(resumenPedido.subtotalOriginal)}</strong></div>
+      <div><small>Tipo de descuento</small><strong>${tipoDescuento === "TOTAL" ? `General ${porcentajeDescuento(s.descuentoGeneral)}%` : tipoDescuento === "PRODUCTO" ? "Por producto" : "Sin descuento"}</strong></div>
+      <div><small>Descuento aplicado</small><strong>-${moneda(resumenPedido.montoDescuento)}</strong></div>
+      <div><small>Subtotal con descuento</small><strong>${moneda(resumenPedido.subtotalConDescuento)}</strong></div>
       <div><small>Costo de envío</small><strong>${moneda(Number(s.costoEnvio || 0))}</strong></div>
-      <div><small>Total original</small><strong>${moneda(s.total || totalPedido(s.productos))}</strong></div>
+      <div><small>Total del pedido</small><strong>${moneda(resumenPedido.subtotalConDescuento + Number(s.costoEnvio || 0))}</strong></div>
       <div><small>Ajustes por devolución</small><strong class="return-amount">-${moneda(importeDevoluciones(s))}</strong></div>
       <div><small>Total ajustado</small><strong>${moneda(totalAjustadoPedido(s))}</strong></div>
       <div><small>Total pagado</small><strong>${moneda(totalPagado(s))}</strong></div>
@@ -2055,7 +2691,6 @@ async function guardarNuevoPago(event) {
     alert("Selecciona el método de pago.");
     return;
   }
-
   const pago = {
     id: crypto.randomUUID(),
     monto,
@@ -2065,7 +2700,9 @@ async function guardarNuevoPago(event) {
   };
   const nuevoTotalPagado = totalPagado(surtidoActual) + monto;
   const total = totalAjustadoPedido(surtidoActual);
-  const nuevoEstatusPago = nuevoTotalPagado >= total ? "PAGADO" : "APARTADO";
+  const nuevoEstatusPago = nuevoTotalPagado >= total
+    ? "PAGADO"
+    : surtidoActual.estatusPago === "K_EFECTIVO" ? "K_EFECTIVO" : "APARTADO";
 
   establecerCargaModal(modalPago, true, "Registrando pago…");
 
@@ -2142,7 +2779,17 @@ async function guardarDevolucion(event) {
     .map(row => {
       const id = row.querySelector('input[type="checkbox"]').dataset.id;
       const original = surtidoActual.productos.find(p => p.idLinea === id);
-      return { ...original, cantidadDevuelta: Number(row.querySelector('input[type="number"]').value) };
+      const costoAplicado = costoUnitarioConDescuento(
+        original,
+        tipoDescuentoPedido(surtidoActual),
+        Number(surtidoActual.descuentoGeneral || 0)
+      );
+      return {
+        ...original,
+        costoOriginal: Number(original.costo || 0),
+        costoAplicado,
+        cantidadDevuelta: Number(row.querySelector('input[type="number"]').value)
+      };
     });
 
   if (!seleccionados.length) return alert("Selecciona por lo menos un producto.");
@@ -2151,7 +2798,7 @@ async function guardarDevolucion(event) {
   if (!motivo) return alert("Selecciona el motivo de devolución.");
 
   const importeAjuste = seleccionados.reduce((sum, producto) =>
-    sum + Number(producto.cantidadDevuelta || 0) * Number(producto.costo || 0), 0);
+    sum + Number(producto.cantidadDevuelta || 0) * Number(producto.costoAplicado ?? producto.costo ?? 0), 0);
 
   const devolucion = {
     id: crypto.randomUUID(),
@@ -2228,13 +2875,14 @@ function imprimirEtiqueta(s) {
           ? "VENTA RÁPIDA"
           : "PEDIDO";
   const cliente = s.nombreCliente || "Cliente no registrado";
-  const ubicacionTexto = s.ubicacion || "Sin ubicación";
+  const ubicacionTexto = s.ubicacion || "Sin Ubicación";
+  const resumen = resumenDescuentoPedido(s);
 
   const printArea = document.createElement("section");
   printArea.id = "printArea";
   printArea.innerHTML = `
     <div class="print-header">
-    <p><img src="logo.JPG" alt="Noventia" style="width:120px; max-width:100%; height:auto"/></p>
+    <p><img src="/logo.JPG" alt="Noventia" style="width: 200px"/></p>
       <strong class="print-type">${escapeHtml(tipoTexto)}</strong>
       <h1>${escapeHtml(s.folio || "SIN FOLIO")}</h1>
     </div>
@@ -2243,11 +2891,16 @@ function imprimirEtiqueta(s) {
       <p><strong>Cliente:</strong> ${escapeHtml(cliente)}</p>
       <p><strong>Vendedor:</strong> ${escapeHtml(s.vendedor || "No registrado")}</p>
       <p><strong>Pago:</strong> ${escapeHtml(textoPago(s.estatusPago))}</p>
+      <p><strong>Subtotal original:</strong> ${escapeHtml(moneda(resumen.subtotalOriginal))}</p>
+      <p><strong>Descuento:</strong> -${escapeHtml(moneda(resumen.montoDescuento))}</p>
+      <p><strong>Subtotal de productos:</strong> ${escapeHtml(moneda(resumen.subtotalConDescuento))}</p>
       <p><strong>Costo de envío:</strong> ${escapeHtml(moneda(Number(s.costoEnvio || 0)))}</p>
-      <p><strong>Total original:</strong> ${escapeHtml(moneda(s.total || totalPedido(s.productos)))}</p>
+      <p><strong>Total del pedido:</strong> ${escapeHtml(moneda(resumen.subtotalConDescuento + Number(s.costoEnvio || 0)))}</p>
       <p><strong>Devoluciones:</strong> -${escapeHtml(moneda(importeDevoluciones(s)))}</p>
+      <p><strong>Total ajustado:</strong> ${escapeHtml(moneda(totalAjustadoPedido(s)))}</p>
       <p><strong>Pagado:</strong> ${escapeHtml(moneda(totalPagado(s)))}</p>
       <p><strong>Saldo:</strong> ${escapeHtml(moneda(saldoPendiente(s)))}</p>
+      <p><strong>Método(s):</strong> ${escapeHtml([...new Set(pagosPedido(s).map(p => metodoPagoTexto(p.metodo)))].join(", ") || "No registrado")}</p>
       <p><strong>Ubicación:</strong> ${escapeHtml(ubicacionTexto)}</p>
     </div>
     <div class="print-products">
@@ -2298,9 +2951,13 @@ function exportarPedidos() {
     Vendedor: s.vendedor || "",
     Estado: textoEstado(s.estado),
     "Estatus de pago": textoPago(s.estatusPago),
-    "Subtotal de productos": Number(s.subtotalProductos ?? totalPedido(s.productos)),
+    "Subtotal original de productos": resumenDescuentoPedido(s).subtotalOriginal,
+    "Tipo de descuento": tipoDescuentoPedido(s),
+    "Descuento general %": tipoDescuentoPedido(s) === "TOTAL" ? porcentajeDescuento(s.descuentoGeneral) : 0,
+    "Descuento total": resumenDescuentoPedido(s).montoDescuento,
+    "Subtotal de productos": resumenDescuentoPedido(s).subtotalConDescuento,
     "Costo de envío": Number(s.costoEnvio || 0),
-    "Total original": Number(s.total || totalPedido(s.productos)),
+    "Total del pedido": resumenDescuentoPedido(s).subtotalConDescuento + Number(s.costoEnvio || 0),
     "Ajustes por devolución": importeDevoluciones(s),
     "Total ajustado": totalAjustadoPedido(s),
     "Total pagado": totalPagado(s),
@@ -2310,7 +2967,7 @@ function exportarPedidos() {
     "Productos regresados al inventario": s.productosRegresadosInventario ? "Sí" : "No",
     "Métodos de pago": [...new Set(pagosPedido(s).map(p => metodoPagoTexto(p.metodo)))].join(", "),
     "Vencimiento apartado": textoVencimiento(s),
-    Total: Number(s.total || totalPedido(s.productos)),
+    Total: resumenDescuentoPedido(s).subtotalConDescuento + Number(s.costoEnvio || 0),
     "Productos distintos": s.productos?.length || 0,
     "Piezas totales": totalPiezas(s.productos),
     "Número de devoluciones": s.devoluciones?.length || 0
@@ -2319,15 +2976,19 @@ function exportarPedidos() {
   const filasProductos = [];
   for (const s of surtidos) {
     for (const p of s.productos || []) {
+      const descuento = descuentoProductoAplicado(p, tipoDescuentoPedido(s), Number(s.descuentoGeneral || 0));
+      const costoNeto = costoUnitarioConDescuento(p, tipoDescuentoPedido(s), Number(s.descuentoGeneral || 0));
       filasProductos.push({
         Folio: s.folio || "",
         Fecha: fechaPedidoTexto(s),
         Cliente: s.nombreCliente || "",
         Clave: p.clave || "",
         Producto: p.nombre || "",
-        "Costo unitario": Number(p.costo || 0),
+        "Costo unitario original": Number(p.costo || 0),
+        "Descuento %": descuento,
+        "Costo unitario con descuento": costoNeto,
         Cantidad: Number(p.cantidad || 0),
-        Subtotal: Number(p.costo || 0) * Number(p.cantidad || 0)
+        Subtotal: costoNeto * Number(p.cantidad || 0)
       });
     }
   }
@@ -2345,7 +3006,7 @@ function exportarPedidos() {
           Clave: p.clave || "",
           Producto: p.nombre || "",
           "Cantidad devuelta": Number(p.cantidadDevuelta || 0),
-          "Importe ajuste": Number(p.cantidadDevuelta || 0) * Number(p.costo || 0),
+          "Importe ajuste": Number(p.cantidadDevuelta || 0) * Number(p.costoAplicado ?? p.costo ?? 0),
           "Estatus de devolución": textoEstatusRevision(d.estatusRevision),
           "Registrada en el sistema": d.registradoSistema ? "Sí" : "No"
         });
@@ -2408,20 +3069,28 @@ document.querySelectorAll('input[name="tipoEntrega"]').forEach(control =>
 
 $("#costoEnvio").addEventListener("input", actualizarTotalNuevo);
 
-$("#estatusPago").addEventListener("change", () => {
+function actualizarCamposPagoInicial() {
   const valor = $("#estatusPago").value;
   const apartado = valor === "APARTADO";
-  const hayPago = valor === "APARTADO" || valor === "PAGADO";
+  const esKEfectivo = valor === "K_EFECTIVO";
+  const hayPago = valor === "APARTADO" || valor === "PAGADO" || esKEfectivo;
 
-  $("#campoMontoApartado").classList.toggle("hidden", !apartado);
+  $("#campoMontoApartado").classList.toggle("hidden", !(apartado || esKEfectivo));
+  $("#etiquetaMontoInicial").textContent = esKEfectivo
+    ? "Cantidad pagada en K efectivo"
+    : "Cantidad del primer apartado";
   $("#campoMetodoPago").classList.toggle("hidden", !hayPago);
   $("#campoFechaPago").classList.toggle("hidden", !hayPago);
-  $("#montoApartado").required = apartado;
+  $("#montoApartado").required = apartado || esKEfectivo;
   $("#metodoPagoInicial").required = hayPago;
+  $("#metodoPagoInicial").disabled = false;
   $("#fechaPagoInicial").value = hayPago ? fechaSoloDia() : "";
 
-  if (!apartado) $("#montoApartado").value = "";
-});
+  if (!(apartado || esKEfectivo)) $("#montoApartado").value = "";
+}
+
+$("#estatusPago").addEventListener("change", actualizarCamposPagoInicial);
+$("#estatusPago").addEventListener("input", actualizarCamposPagoInicial);
 
 function configurarEstadosIniciales(tipoOperacion) {
   const selector = $("#estadoInicial");
@@ -2429,7 +3098,6 @@ function configurarEstadosIniciales(tipoOperacion) {
 
   const opciones = tipoOperacion === "BAZ"
     ? [
-        ["PROCESO", "EN PROCESO"],
         ["CLASIFICADO", "Clasificado"],
         ["ENTREGADO", "Entregado"],
         ["FINALIZADO", "Finalizado"]
@@ -2449,6 +3117,17 @@ function configurarEstadosIniciales(tipoOperacion) {
 
 function abrirNuevoPedido(tipoOperacion) {
   $("#formSurtido").reset();
+  $("#vendedor").value = perfilActual?.nombre || usuarioActual?.email || "";
+  $("#vendedor").readOnly = true;
+  $("#tipoDescuento").value = "NINGUNO";
+  $("#descuentoGeneral").value = "";
+  $("#productoDescuento").value = "";
+  $("#campoDescuentoGeneral").classList.add("hidden");
+  $("#campoDescuentoProducto").classList.add("hidden");
+  $("#clienteId").value = "";
+  $("#clienteTelefono").value = "";
+  $("#clienteSeleccionadoInfo").classList.add("hidden");
+  ocultarResultadosClientes();
   $("#tipoOperacion").value = tipoOperacion;
   $("#fechaPedido").value = fechaSoloDia();
 
@@ -2480,8 +3159,12 @@ function abrirNuevoPedido(tipoOperacion) {
 
   $("#campoMontoApartado").classList.add("hidden");
   $("#campoMetodoPago").classList.add("hidden");
+  $("#metodoPagoInicial").required = false;
+  $("#metodoPagoInicial").disabled = false;
+  $("#etiquetaMontoInicial").textContent = "Cantidad del primer apartado";
   $("#campoFechaPago").classList.add("hidden");
   $("#fechaPagoInicial").value = fechaSoloDia();
+  actualizarCamposPagoInicial();
   mostrarMensajeProducto("");
 
   modalSurtido.showModal();
@@ -2545,14 +3228,82 @@ $("#btnAgregarProductoEdicion").addEventListener("click", () => {
   actualizarTotalEdicion();
 });
 $("#editarCostoEnvio").addEventListener("input", actualizarTotalEdicion);
-$("#buscador").addEventListener("input", renderLista);
-$("#filtroEstado").addEventListener("change", renderLista);
-$("#filtroPago").addEventListener("change", renderLista);
-$("#filtroMetodo").addEventListener("change", renderLista);
-$("#filtroDevolucion").addEventListener("change", renderLista);
+$("#tipoDescuento").addEventListener("change", actualizarModoDescuentoNuevo);
+$("#descuentoGeneral").addEventListener("input", actualizarTotalNuevo);
+$("#editarTipoDescuento").addEventListener("change", actualizarModoDescuentoEdicion);
+$("#editarDescuentoGeneral").addEventListener("input", actualizarTotalEdicion);
+function aplicarFiltroManual() {
+  filtroPagadosPendientesActivo = false;
+  renderLista();
+}
+
+$("#btnVerPagadosPendientes").addEventListener("click", () => {
+  filtroPagadosPendientesActivo = !filtroPagadosPendientesActivo;
+  if (filtroPagadosPendientesActivo) {
+    $("#buscador").value = "";
+    $("#filtroEstado").value = "";
+    $("#filtroPago").value = "";
+    $("#filtroMetodo").value = "";
+    $("#filtroDevolucion").value = "";
+  }
+  renderLista();
+});
+$("#buscador").addEventListener("input", aplicarFiltroManual);
+$("#filtroEstado").addEventListener("change", aplicarFiltroManual);
+$("#filtroPago").addEventListener("change", aplicarFiltroManual);
+$("#filtroMetodo").addEventListener("change", aplicarFiltroManual);
+$("#filtroDevolucion").addEventListener("change", aplicarFiltroManual);
 
 $("#formLogin").addEventListener("submit", iniciarSesion);
 $("#btnCerrarSesion").addEventListener("click", cerrarSesion);
+$("#btnGestionUsuarios").addEventListener("click", abrirGestionUsuarios);
+$("#formNuevoUsuario").addEventListener("submit", crearUsuarioSistema);
+$("#btnNuevoCliente").addEventListener("click", abrirNuevoCliente);
+$("#formNuevoCliente").addEventListener("submit", guardarNuevoCliente);
+$("#btnCargaClientes").addEventListener("click", abrirCargaClientes);
+$("#archivoClientes").addEventListener("change", prepararArchivoClientes);
+$("#btnImportarClientes").addEventListener("click", importarClientesPreparados);
+$("#btnPlantillaClientes").addEventListener("click", descargarPlantillaClientes);
+$("#nombreCliente").addEventListener("input", () => {
+  $("#clienteId").value = "";
+  $("#clienteTelefono").value = "";
+  $("#clienteSeleccionadoInfo").classList.add("hidden");
+  renderResultadosClientes();
+});
+$("#nombreCliente").addEventListener("focus", renderResultadosClientes);
+$("#nombreCliente").addEventListener("blur", () => setTimeout(ocultarResultadosClientes, 180));
+$("#resultadosClientes").addEventListener("click", event => {
+  const boton = event.target.closest("[data-client-id]");
+  if (!boton) return;
+  seleccionarCliente(clientesFrecuentes.find(cliente => cliente.id === boton.dataset.clientId));
+});
+
+const menuLateral = $("#menuLateral");
+const menuOverlay = $("#menuOverlay");
+const btnAbrirMenu = $("#btnAbrirMenu");
+
+function alternarMenuLateral(abierto) {
+  menuLateral.classList.toggle("open", abierto);
+  menuOverlay.classList.toggle("open", abierto);
+  btnAbrirMenu.setAttribute("aria-expanded", String(abierto));
+  document.body.classList.toggle("menu-open", abierto);
+}
+
+btnAbrirMenu.addEventListener("click", () => alternarMenuLateral(true));
+$("#btnCerrarMenu").addEventListener("click", () => alternarMenuLateral(false));
+menuOverlay.addEventListener("click", () => alternarMenuLateral(false));
+
+document.querySelectorAll(".sidebar-link:not(.sidebar-logout)").forEach(boton => {
+  boton.addEventListener("click", () => {
+    document.querySelectorAll(".sidebar-link.active").forEach(item => item.classList.remove("active"));
+    boton.classList.add("active");
+    if (window.matchMedia("(max-width: 900px)").matches) alternarMenuLateral(false);
+  });
+});
+
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape" && menuLateral.classList.contains("open")) alternarMenuLateral(false);
+});
 
 cargarCatalogoProductos();
 configurarBotonEscanerMovil();
