@@ -5,7 +5,7 @@ import {
   serverTimestamp, query, orderBy, arrayUnion, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import {
-  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  getAuth, createUserWithEmailAndPassword,
   deleteUser, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
@@ -1350,12 +1350,6 @@ function transicionesPermitidas(estadoActual) {
   return mapa[estadoActual] || ["EN_PROCESO", "CLASIFICADO", "ENVIADO", "CON_REPARTIDOR", "ENTREGADO", "FINALIZADO", "CANCELADO"];
 }
 
-function mostrarErrorLogin(mensaje = "") {
-  const elemento = $("#loginError");
-  elemento.textContent = mensaje;
-  elemento.classList.toggle("hidden", !mensaje);
-}
-
 function aplicarPermisos() {
   const esAdmin = perfilActual?.rol === "admin";
 
@@ -1556,34 +1550,6 @@ function iniciarEscuchaPedidos() {
   });
 }
 
-async function iniciarSesion(event) {
-  event.preventDefault();
-  mostrarErrorLogin("");
-
-  const correo = $("#loginCorreo").value.trim();
-  const contrasena = $("#loginContrasena").value;
-  const boton = $("#btnIniciarSesion");
-
-  boton.disabled = true;
-  boton.textContent = "Ingresando…";
-
-  try {
-    await signInWithEmailAndPassword(auth, correo, contrasena);
-  } catch (error) {
-    console.error(error);
-    const mensajes = {
-      "auth/invalid-credential": "Correo o contraseña incorrectos.",
-      "auth/invalid-email": "El correo electrónico no es válido.",
-      "auth/too-many-requests": "Demasiados intentos. Espera unos minutos.",
-      "auth/network-request-failed": "No se pudo conectar. Revisa tu internet."
-    };
-    mostrarErrorLogin(mensajes[error.code] || "No se pudo iniciar sesión.");
-  } finally {
-    boton.disabled = false;
-    boton.textContent = "Iniciar sesión";
-  }
-}
-
 async function cerrarSesion() {
   if (!confirm("¿Deseas cerrar la sesión?")) return;
   await signOut(auth);
@@ -1610,10 +1576,7 @@ onAuthStateChanged(auth, async user => {
     clientesFrecuentes = [];
     usuariosSistema = [];
 
-    $("#aplicacion").classList.add("hidden");
-    $("#pantallaLogin").classList.remove("hidden");
-    $("#formLogin").reset();
-    mostrarErrorLogin("");
+    window.location.replace("login.html");
     return;
   }
 
@@ -1621,7 +1584,6 @@ onAuthStateChanged(auth, async user => {
     perfilActual = await cargarPerfilUsuario(user);
     aplicarPermisos();
 
-    $("#pantallaLogin").classList.add("hidden");
     $("#aplicacion").classList.remove("hidden");
     $("#estadoConexion").textContent =
       `Conectado como ${perfilActual.nombre || user.email}. Los cambios se guardan automáticamente.`;
@@ -1631,8 +1593,9 @@ onAuthStateChanged(auth, async user => {
     if (perfilActual?.rol === "admin") iniciarEscuchaUsuarios();
   } catch (error) {
     console.error(error);
+    sessionStorage.setItem("loginError", error.message || "La cuenta no está autorizada.");
     await signOut(auth);
-    mostrarErrorLogin(error.message || "La cuenta no está autorizada.");
+    window.location.replace("login.html");
   }
 });
 function pedidoPagadoPendienteEnvio(s) {
@@ -3254,7 +3217,6 @@ $("#filtroPago").addEventListener("change", aplicarFiltroManual);
 $("#filtroMetodo").addEventListener("change", aplicarFiltroManual);
 $("#filtroDevolucion").addEventListener("change", aplicarFiltroManual);
 
-$("#formLogin").addEventListener("submit", iniciarSesion);
 $("#btnCerrarSesion").addEventListener("click", cerrarSesion);
 $("#btnGestionUsuarios").addEventListener("click", abrirGestionUsuarios);
 $("#formNuevoUsuario").addEventListener("submit", crearUsuarioSistema);

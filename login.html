@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#073b4c" />
+  <title>Iniciar sesión | Noventia</title>
+  <link rel="stylesheet" href="login.css?v=1" />
+</head>
+<body>
+  <main class="login-layout">
+    <section class="login-showcase" aria-label="Control de pedidos Noventia">
+      <div class="showcase-content">
+        <span class="showcase-badge">NOVENTIA</span>
+        <h1>Control de pedidos,<br />claro y en movimiento.</h1>
+        <p>Gestiona ventas, pagos, clientes y entregas desde un solo lugar.</p>
+        <ul>
+          <li><span>01</span> Seguimiento de pedidos</li>
+          <li><span>02</span> Control de pagos</li>
+          <li><span>03</span> Operación por perfiles</li>
+        </ul>
+      </div>
+      <div class="showcase-orbit orbit-one"></div>
+      <div class="showcase-orbit orbit-two"></div>
+    </section>
+
+    <section class="login-access">
+      <form id="formLogin" class="login-card" novalidate>
+        <div class="login-brand">
+          <img src="logo.JPG" alt="Noventia" />
+          <div>
+            <span>Panel administrativo</span>
+            <h2>Bienvenido de nuevo</h2>
+            <p>Ingresa con tu cuenta autorizada.</p>
+          </div>
+        </div>
+
+        <label for="loginCorreo">Correo electrónico</label>
+        <div class="input-control">
+          <span aria-hidden="true">@</span>
+          <input id="loginCorreo" type="email" autocomplete="username" required placeholder="usuario@empresa.com" />
+        </div>
+
+        <label for="loginContrasena">Contraseña</label>
+        <div class="input-control password-control">
+          <span aria-hidden="true">●</span>
+          <input id="loginContrasena" type="password" autocomplete="current-password" required minlength="6" placeholder="Mínimo 6 caracteres" />
+          <button id="btnMostrarContrasena" type="button" class="show-password" aria-label="Mostrar contraseña">Ver</button>
+        </div>
+
+        <p id="loginError" class="login-error hidden" role="alert"></p>
+        <button id="btnIniciarSesion" type="submit" class="login-submit">
+          <span>Iniciar sesión</span><b aria-hidden="true">→</b>
+        </button>
+        <p class="login-help">Si no tienes acceso, solicita una cuenta al administrador.</p>
+      </form>
+    </section>
+  </main>
+
+  <script type="module" src="login.js?v=1"></script>
+</body>
+</html>

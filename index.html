@@ -7,32 +7,6 @@
   <link rel="stylesheet" href="styles.css?v=29-noventia-ui" />
 </head>
 <body>
-  <section id="pantallaLogin" class="login-screen">
-    <form id="formLogin" class="login-card">
-      <div class="login-brand">
-        <img src="logo.JPG" alt="Noventia" class="imglogo">
-        <!-- <span class="login-mark">N</span> -->
-        <div class="text-context">
-          <h1>Control de pedidos</h1>
-          <p>Acceso al sistema</p>
-        </div>
-      </div>
-
-      <label>
-        Correo electrónico
-        <input id="loginCorreo" type="email" autocomplete="username" required placeholder="usuario@empresa.com" />
-      </label>
-
-      <label>
-        Contraseña
-        <input id="loginContrasena" type="password" autocomplete="current-password" required minlength="6" placeholder="••••••••" />
-      </label>
-
-      <p id="loginError" class="login-error hidden"></p>
-      <button id="btnIniciarSesion" type="submit" class="primary login-submit">Iniciar sesión</button>
-    </form>
-  </section>
-
   <div id="aplicacion" class="hidden">
   <button id="btnAbrirMenu" class="mobile-menu-button" type="button" aria-label="Abrir menú" aria-controls="menuLateral" aria-expanded="false">
     <i class="fa-solid fa-bars"></i>
@@ -300,7 +274,6 @@
               <span>Escanear</span>
             </button>
           </div>
-          <!-- <small id="mensajeProducto" class="product-message"></small> -->
         </label>
         <label class="grow">
           Producto
@@ -758,7 +731,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <script type="module" src="app.js?v=28-k-efectivo"></script>
+  <script type="module" src="app.js?v=30-login-separado"></script>
   </div>
 </body>
 </html>
