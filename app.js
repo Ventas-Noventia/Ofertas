@@ -59,6 +59,14 @@ const ESTADOS = {
   CON_DEVOLUCION: "Pendiente de registrar devolución"
 };
 
+// conexion
+const SUPABASE_URL = "https://mgncjpfryybixbopvpex.supabase.co";
+const SUPABASE_KEY = "sb_publishable_Qm1YYQo0h64r63O9ZBLvxQ_4z43Qtie";
+
+const supabaseClient = supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
 function escapeHtml(valor = "") {
   return String(valor).replace(/[&<>"']/g, c => ({
     "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"
@@ -1018,6 +1026,7 @@ function valorCampoProducto(producto, nombres) {
 }
 
 function normalizarProductoCatalogo(producto) {
+
   const clave = limpiarClaveProducto(valorCampoProducto(producto, [
     "clave", "Clave", "CLAVE",
     "sku", "SKU", "Sku",
@@ -1040,22 +1049,56 @@ function normalizarProductoCatalogo(producto) {
     "ubicacion", "Ubicación", "Ubicacion", "UBICACION"
   ]);
 
+  const codigoCaja = valorCampoProducto(producto, [
+    "codigo_caja",
+    "codigoCaja",
+    "Código de caja",
+    "Codigo de caja"
+  ]);
+
+  const departamento = valorCampoProducto(producto, [
+    "departamento",
+    "Departamento",
+    "DEPARTAMENTO"
+  ]);
+
+  const existenciaTexto = valorCampoProducto(producto, [
+    "existencia",
+    "Existencia",
+    "EXISTENCIA"
+  ]);
+
   const costoTexto = valorCampoProducto(producto, [
     "costo", "Costo", "COSTO",
     "precio", "Precio", "PRECIO"
   ]);
 
-  const costo = Number(String(costoTexto).replace(/[$,\s]/g, ""));
+  const costo = Number(
+    String(costoTexto).replace(/[$,\s]/g, "")
+  );
+
+  const existencia = Number(existenciaTexto);
 
   return {
     clave,
     nombre,
     categoria,
     ubicacion,
-    costo: Number.isFinite(costo) && costo > 0 ? costo : null
-  };
-}
+    codigoCaja,
+    departamento,
 
+    existencia:
+      Number.isFinite(existencia)
+        ? existencia
+        : 0,
+
+    costo:
+      Number.isFinite(costo) && costo > 0
+        ? costo
+        : null
+  };
+
+}
 function actualizarEstadoCatalogo(tipo, texto) {
   const elemento = $("#estadoCatalogo");
   if (!elemento) return;
@@ -1067,28 +1110,54 @@ async function cargarCatalogoProductos() {
   actualizarEstadoCatalogo("loading", "Cargando catálogo…");
 
   try {
-    const respuesta = await fetch("./inventario.json", { cache: "no-store" });
+    const TAMANO_LOTE = 1000;
 
-    if (!respuesta.ok) {
-      throw new Error(`HTTP ${respuesta.status}`);
+    let desde = 0;
+    let lista = [];
+    let seguirCargando = true;
+
+    while (seguirCargando) {
+      const hasta = desde + TAMANO_LOTE - 1;
+
+      const { data, error } = await supabaseClient
+        .from("inventario_devoluciones")
+        .select(`
+          clave,
+          descripcion,
+          categoria,
+          ubicacion,
+          codigo_caja,
+          departamento,
+          precio,
+          existencia
+        `)
+        .range(desde, hasta);
+
+      if (error) {
+        throw error;
+      }
+
+      lista.push(...data);
+
+      console.log(
+        `Productos descargados: ${lista.length.toLocaleString("es-MX")}`
+      );
+
+      if (data.length < TAMANO_LOTE) {
+        seguirCargando = false;
+      } else {
+        desde += TAMANO_LOTE;
+      }
     }
-
-    const contenido = await respuesta.json();
-    const lista = Array.isArray(contenido)
-      ? contenido
-      : Array.isArray(contenido.productos)
-        ? contenido.productos
-        : Array.isArray(contenido.inventario)
-          ? contenido.inventario
-          : [];
 
     const indice = new Map();
 
     for (const registro of lista) {
       const producto = normalizarProductoCatalogo(registro);
+
       if (!producto.clave) continue;
 
-      // Si hay claves duplicadas, conserva el primer registro válido.
+      // Si hay claves duplicadas conserva el primer registro válido.
       if (!indice.has(producto.clave)) {
         indice.set(producto.clave, producto);
       }
@@ -1098,18 +1167,35 @@ async function cargarCatalogoProductos() {
     catalogoCargado = true;
 
     if (catalogoProductos.size === 0) {
-      actualizarEstadoCatalogo("warning", "Catálogo vacío");
+      actualizarEstadoCatalogo(
+        "warning",
+        "Catálogo vacío"
+      );
     } else {
       actualizarEstadoCatalogo(
         "success",
         `${catalogoProductos.size.toLocaleString("es-MX")} productos cargados`
       );
     }
+
+    console.log(
+      "Catálogo cargado desde Supabase:",
+      catalogoProductos.size
+    );
+
   } catch (error) {
     catalogoCargado = false;
     catalogoProductos = new Map();
-    actualizarEstadoCatalogo("error", "No se cargó inventario.json");
-    console.error("Error al cargar inventario.json:", error);
+
+    actualizarEstadoCatalogo(
+      "error",
+      "No se pudo cargar el catálogo"
+    );
+
+    console.error(
+      "Error al cargar catálogo desde Supabase:",
+      error
+    );
   }
 }
 
