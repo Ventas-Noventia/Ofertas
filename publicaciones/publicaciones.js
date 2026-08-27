@@ -6,10 +6,9 @@ import {
 
 import {
   getFirestore,
-  collection,
-  addDoc,
   doc,
   getDoc,
+  setDoc,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -109,17 +108,67 @@ function construirLinkCorto(id) {
 
   const url =
     new URL(
-      obtenerUrlBase()
+      window.location.href
     );
 
+  url.search = "";
+  url.hash = "";
+
+  // Evita mostrar index.html en la liga.
+  url.pathname =
+    url.pathname.replace(
+      /index\.html$/i,
+      ""
+    );
 
   url.searchParams.set(
     "p",
     id
   );
 
-
   return url.toString();
+
+}
+
+
+async function generarIdCortoDisponible() {
+
+  // Código de 6 dígitos fácil de leer y compartir.
+  for (
+    let intento = 0;
+    intento < 12;
+    intento += 1
+  ) {
+
+    const id =
+      String(
+        Math.floor(
+          100000 +
+          Math.random() * 900000
+        )
+      );
+
+    const referencia =
+      doc(
+        db,
+        "publicaciones_whatsapp",
+        id
+      );
+
+    const existente =
+      await getDoc(
+        referencia
+      );
+
+    if (!existente.exists()) {
+      return id;
+    }
+
+  }
+
+  throw new Error(
+    "No se pudo generar una referencia disponible."
+  );
 
 }
 
@@ -387,35 +436,39 @@ async function generarPublicacion() {
      * producto + precio + vendedor.
      */
 
-    const referencia =
-      await addDoc(
-        collection(
-          db,
-          "publicaciones_whatsapp"
-        ),
-        {
-          producto,
-          precio,
-          vendedor,
-          encargada:
-            encargadaNombre,
-          activo:
-            true,
-          fechaCreacion:
-            serverTimestamp()
-        }
-      );
+    const idCorto =
+      await generarIdCortoDisponible();
+
+
+    await setDoc(
+      doc(
+        db,
+        "publicaciones_whatsapp",
+        idCorto
+      ),
+      {
+        producto,
+        precio,
+        vendedor,
+        encargada:
+          encargadaNombre,
+        activo:
+          true,
+        fechaCreacion:
+          serverTimestamp()
+      }
+    );
 
 
     const link =
       construirLinkCorto(
-        referencia.id
+        idCorto
       );
 
 
     publicacionActual = {
       id:
-        referencia.id,
+        idCorto,
       producto,
       precio,
       vendedor,
