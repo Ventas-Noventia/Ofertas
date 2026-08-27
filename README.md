@@ -304,3 +304,4 @@ Ejemplo de vendedor:
 7. Publica el archivo `firestore.rules` incluido en esta versión.
 
 El sistema no permite elegir el rol desde el formulario de acceso. El rol se obtiene del documento autorizado en Firestore.
+# Ofertas
