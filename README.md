@@ -305,3 +305,4 @@ Ejemplo de vendedor:
 
 El sistema no permite elegir el rol desde el formulario de acceso. El rol se obtiene del documento autorizado en Firestore.
 # Ofertas
+# Ofertas
