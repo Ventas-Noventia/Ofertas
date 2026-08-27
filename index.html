@@ -35,6 +35,7 @@
       <button id="btnAlmacen" class="sidebar-link active" type="button"><i class="fas fa-store"></i><span>Venta de almacén</span></button>
       <button id="btnBazar" class="sidebar-link" type="button"><i class="fas fa-store-alt"></i><span>Venta de bazar</span></button>
       <button id="btnVentaRapida" class="sidebar-link" type="button"><i class="fas fa-cash-register"></i><span>Venta rápida</span></button>
+      <button id="btnWhatsapp" class="sidebar-link" type="button"><i class="fa-brands fa-whatsapp"></i><span>Solicitudes WhatsApp</span></button>
 
       <p class="sidebar-section-title">Administración</p>
       <button id="btnReporteCaja" data-admin-only class="sidebar-link" type="button"><i class="fa-solid fa-chart-column"></i><span>Reporte de caja</span></button>
@@ -47,7 +48,7 @@
     <button id="btnCerrarSesion" class="sidebar-link sidebar-logout" type="button"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Cerrar sesión</span></button>
   </aside>
 
-  <main class="container">
+  <main id="vistaPedidos" class="container">
     <section class="summary">
       <article><span id="totalHoy">0</span><small>Pedidos de hoy</small></article>
       <article><span id="totalProceso">0</span><small>En proceso</small></article>
@@ -103,7 +104,600 @@
     </section>
   </main>
 
-  <dialog id="modalSurtido">
+  <main id="vistaWhatsapp" class="container hidden">
+    <section class="whatsapp-header">
+
+      <div>
+        <h1>Solicitudes WhatsApp</h1>
+        <p>Control y seguimiento de intenciones de compra.</p>
+      </div>
+
+      <button
+        id="btnNuevaSolicitudWhatsApp"
+        class="primary"
+        type="button"
+      >
+        <i class="fa-solid fa-plus"></i>
+        Nueva solicitud
+      </button>
+
+    </section>
+
+    <section class="whatsapp-stats">
+      <button type="button" class="whatsapp-stat-card" data-status-filter="confirmar">
+        <span class="stat-number" id="waCountConfirmar">0</span>
+        <span class="stat-title">Confirmar pedido</span>
+      </button>
+      <button type="button" class="whatsapp-stat-card" data-status-filter="pendiente_preparacion">
+        <span class="stat-number" id="waCountPendiente">0</span>
+        <span class="stat-title">Pendiente preparación</span>
+      </button>
+      <button type="button" class="whatsapp-stat-card" data-status-filter="preparado">
+        <span class="stat-number" id="waCountPreparado">0</span>
+        <span class="stat-title">Preparado</span>
+      </button>
+      <button type="button" class="whatsapp-stat-card" data-status-filter="listo">
+        <span class="stat-number" id="waCountListo">0</span>
+        <span class="stat-title">Listo</span>
+      </button>
+      <button type="button" class="whatsapp-stat-card" data-status-filter="finalizado">
+        <span class="stat-number" id="waCountFinalizado">0</span>
+        <span class="stat-title">Finalizado</span>
+      </button>
+    </section>
+
+    <section class="whatsapp-toolbar">
+      <input type="search" id="waSearch" placeholder="Buscar cliente, referencia, producto o teléfono..." />
+      <select id="waStatusFilter">
+        <option value="todos">Todos los estados</option>
+        <option value="confirmar">Confirmar pedido</option>
+        <option value="pendiente_preparacion">Pendiente preparación</option>
+        <option value="preparado">Preparado</option>
+        <option value="listo">Listo</option>
+        <option value="finalizado">Finalizado</option>
+        <option value="cancelado">Cancelado</option>
+      </select>
+    </section>
+
+    <section>
+      <!-- CAMBIO DE VISTA -->
+      <div class="wa-view-toggle">
+
+        <button
+          id="btnWaVistaLista"
+          class="wa-view-button active"
+          type="button"
+        >
+          <i class="fa-solid fa-list"></i>
+          Lista
+        </button>
+
+        <button
+          id="btnWaVistaKanban"
+          class="wa-view-button"
+          type="button"
+        >
+          <i class="fa-solid fa-table-columns"></i>
+          Kanban
+        </button>
+        <button
+        id="btnWaVistaTrazabilidad"
+        type="button"
+        class="wa-view-btn"
+      >
+        <i class="fa-solid fa-chart-line"></i>
+        Trazabilidad
+      </button>
+
+      </div>
+<!-- ============================= -->
+<!-- VISTA LISTA -->
+<!-- ============================= -->
+
+      <div id="waVistaLista">
+
+        <div
+          id="whatsappSolicitudesContainer"
+          class="whatsapp-solicitudes"
+        ></div>
+
+      </div>
+<!-- ============================= -->
+<!-- VISTA KANBAN -->
+<!-- ============================= -->
+
+      <div id="waVistaKanban" class="hidden">
+
+        <div class="whatsapp-kanban">
+
+
+          <!-- CONFIRMAR PEDIDO -->
+
+          <section
+            class="kanban-column"
+            data-estado="confirmar"
+          >
+
+            <header class="kanban-column-header">
+
+              <div>
+                <span class="kanban-dot"></span>
+                <strong>Confirmar pedido</strong>
+              </div>
+
+              <span
+                id="waKanbanCountConfirmar"
+                class="kanban-count"
+              >
+                0
+              </span>
+
+            </header>
+
+            <div
+              id="waColumnConfirmar"
+              class="kanban-dropzone"
+              data-estado="confirmar"
+            ></div>
+
+          </section>
+
+
+          <!-- PENDIENTE DE PREPARACIÓN -->
+
+          <section
+            class="kanban-column"
+            data-estado="pendiente_preparacion"
+          >
+
+            <header class="kanban-column-header">
+
+              <div>
+                <span class="kanban-dot"></span>
+                <strong>Pendiente preparación</strong>
+              </div>
+
+              <span
+                id="waKanbanCountPendiente"
+                class="kanban-count"
+              >
+                0
+              </span>
+
+            </header>
+
+            <div
+              id="waColumnPendiente"
+              class="kanban-dropzone"
+              data-estado="pendiente_preparacion"
+            ></div>
+
+          </section>
+
+
+          <!-- PREPARADO -->
+
+          <section
+            class="kanban-column"
+            data-estado="preparado"
+          >
+
+            <header class="kanban-column-header">
+
+              <div>
+                <span class="kanban-dot"></span>
+                <strong>Preparado</strong>
+              </div>
+
+              <span
+                id="waKanbanCountPreparado"
+                class="kanban-count"
+              >
+                0
+              </span>
+
+            </header>
+
+            <div
+              id="waColumnPreparado"
+              class="kanban-dropzone"
+              data-estado="preparado"
+            ></div>
+
+          </section>
+
+
+          <!-- LISTO -->
+
+          <section
+            class="kanban-column"
+            data-estado="listo"
+          >
+
+            <header class="kanban-column-header">
+
+              <div>
+                <span class="kanban-dot"></span>
+                <strong>Listo</strong>
+              </div>
+
+              <span
+                id="waKanbanCountListo"
+                class="kanban-count"
+              >
+                0
+              </span>
+
+            </header>
+
+            <div
+              id="waColumnListo"
+              class="kanban-dropzone"
+              data-estado="listo"
+            ></div>
+
+          </section>
+
+
+          <!-- FINALIZADO -->
+
+          <section
+            class="kanban-column"
+            data-estado="finalizado"
+          >
+
+            <header class="kanban-column-header">
+
+              <div>
+                <span class="kanban-dot"></span>
+                <strong>Finalizado</strong>
+              </div>
+
+              <span
+                id="waKanbanCountFinalizado"
+                class="kanban-count"
+              >
+                0
+              </span>
+
+            </header>
+
+            <div
+              id="waColumnFinalizado"
+              class="kanban-dropzone"
+              data-estado="finalizado"
+            ></div>
+
+          </section>
+
+
+        </div>
+
+      </div>
+
+      <div id="waVistaTrazabilidad" class="hidden">
+<button
+  id="btnExportarTrazabilidadWhatsapp"
+  type="button"
+  class="secondary"
+>
+  <i class="fa-solid fa-file-excel"></i>
+  Exportar Excel
+</button>
+        <div class="wa-trace-filters">
+
+          <label>
+            Desde
+            <input type="date" id="waTraceDesde">
+          </label>
+
+          <label>
+            Hasta
+            <input type="date" id="waTraceHasta">
+          </label>
+
+          <label>
+            Vendedor
+            <select id="waTraceVendedor">
+              <option value="todos">Todos</option>
+            </select>
+          </label>
+
+          <label>
+            Ubicación
+            <select id="waTraceUbicacion">
+              <option value="todos">Todas</option>
+            </select>
+          </label>
+
+          <label>
+            Estado
+            <select id="waTraceEstado">
+              <option value="todos">Todos</option>
+              <option value="confirmar">Confirmar pedido</option>
+              <option value="pendiente_preparacion">Pendiente preparación</option>
+              <option value="preparado">Preparado</option>
+              <option value="listo">Listo</option>
+              <option value="finalizado">Finalizado</option>
+            </select>
+          </label>
+
+        </div>
+
+
+        <div class="wa-trace-summary">
+
+          <article>
+            <span>Solicitudes</span>
+            <strong id="waTraceTotal">0</strong>
+          </article>
+
+          <article>
+            <span>Monto</span>
+            <strong id="waTraceMonto">$0.00</strong>
+          </article>
+
+          <article>
+            <span>Finalizadas</span>
+            <strong id="waTraceFinalizadas">0</strong>
+          </article>
+
+          <article>
+            <span>En proceso</span>
+            <strong id="waTraceProceso">0</strong>
+          </article>
+
+          <article>
+            <span>Tiempo promedio</span>
+            <strong id="waTraceTiempo">—</strong>
+          </article>
+
+        </div>
+
+
+        <div class="wa-trace-table-wrapper">
+
+          <table class="wa-trace-table">
+
+            <thead>
+              <tr>
+                <th>Referencia</th>
+                <th>Cliente</th>
+                <th>Monto</th>
+                <th>Ubicación</th>
+                <th>Vendedor</th>
+                <th>Preparó</th>
+                <th>Estado</th>
+                <th>Creado</th>
+                <th>Preparado</th>
+                <th>Finalizado</th>
+                <th>Tiempo total</th>
+              </tr>
+            </thead>
+
+            <tbody id="waTraceBody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </section>
+  </main>
+
+
+<dialog id="modalWhatsappSolicitud" class="wide-dialog">
+  <form id="formWhatsappSolicitud">
+
+    <div class="dialog-header">
+      <div>
+        <h3>Nueva solicitud</h3>
+        <p>Registrar una intención de compra recibida por WhatsApp.</p>
+      </div>
+
+      <button
+        type="button"
+        class="icon-button"
+        data-close="modalWhatsappSolicitud"
+        aria-label="Cerrar"
+      >
+        ×
+      </button>
+    </div>
+
+    <div class="form-grid">
+      <label>
+        Cliente
+        <input
+          id="waCliente"
+          type="text"
+          maxlength="120"
+          placeholder="Ej. María López"
+          required
+        >
+      </label>
+
+      <label>
+        Teléfono
+        <input
+          id="waTelefono"
+          type="tel"
+          maxlength="15"
+          placeholder="5512345678"
+          required
+        >
+      </label>
+
+      <label>
+        Grupo
+        <input
+          id="waGrupo"
+          type="text"
+          maxlength="120"
+          placeholder="Ej. Grupo Naucalpan"
+        >
+      </label>
+
+      <label>
+        Vendedor
+        <select id="waVendedor" required>
+          <option value="">Seleccionar</option>
+          <option value="Letty">Letty</option>
+          <option value="Juan">Juan</option>
+          <option value="Frida">Frida</option>
+          <option value="Eric">Eric</option>
+          <option value="Yare">Yare</option>
+          <option value="Kevin">Kevin</option>
+          <option value="Helen">Helen</option>
+        </select>
+      </label>
+    </div>
+
+    <fieldset class="delivery-choice wa-edit-delivery">
+      <legend>Tipo de entrega</legend>
+
+      <label class="inline-check">
+        <input
+          type="radio"
+          name="waTipoEntrega"
+          value="PUNTO_ENTREGA"
+        >
+        <span>Recoger en punto de entrega</span>
+      </label>
+
+      <label class="inline-check">
+        <input
+          type="radio"
+          name="waTipoEntrega"
+          value="DOMICILIO"
+        >
+        <span>Entrega a domicilio</span>
+      </label>
+    </fieldset>
+
+    <div
+      id="waCampoPuntoEntrega"
+      class="hidden wa-delivery-field"
+    >
+      <label>
+        Punto de entrega
+        <select id="waPuntoEntrega">
+          <option value="">Selecciona un punto de entrega</option>
+        </select>
+      </label>
+    </div>
+
+    <div
+      id="waCampoDomicilio"
+      class="hidden wa-delivery-field"
+    >
+      <label>
+        Domicilio completo
+        <input
+          id="waUbicacion"
+          type="text"
+          maxlength="260"
+          placeholder="Calle, número, colonia, municipio, estado, C.P. y referencias"
+        >
+      </label>
+    </div>
+
+    <section
+      id="waProductosSolicitudWrap"
+      class="wa-modal-section wa-products-section"
+    >
+      <div class="wa-section-title">
+        <div>
+          <strong>Productos</strong>
+          <small>Agrega uno o varios productos al pedido.</small>
+        </div>
+      </div>
+
+      <div class="product-entry wa-product-entry">
+        <label>
+          ID producto
+          <input
+            id="waIdProducto"
+            type="text"
+            maxlength="80"
+            placeholder="ID / clave"
+          >
+        </label>
+
+        <label class="grow">
+          Producto
+          <input
+            id="waProducto"
+            type="text"
+            maxlength="180"
+            placeholder="Nombre del producto"
+          >
+        </label>
+
+        <label>
+          Precio
+          <input
+            id="waPrecio"
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder="0.00"
+          >
+        </label>
+
+        <label>
+          Cantidad
+          <input
+            id="waCantidadProducto"
+            type="number"
+            min="1"
+            step="1"
+            value="1"
+          >
+        </label>
+
+        <button
+          type="button"
+          id="btnAgregarProductoWhatsapp"
+          class="secondary"
+        >
+          + Agregar
+        </button>
+      </div>
+
+      <div
+        id="waProductosAgregados"
+        class="product-list wa-product-list"
+      ></div>
+
+      <div class="order-total wa-order-total">
+        <span>Total</span>
+        <strong id="waProductosTotal">$0.00</strong>
+      </div>
+    </section>
+
+    <div class="dialog-actions">
+      <button
+        type="button"
+        class="ghost"
+        data-close="modalWhatsappSolicitud"
+      >
+        Cancelar
+      </button>
+
+      <button
+        type="submit"
+        class="primary"
+      >
+        Crear solicitud
+      </button>
+    </div>
+
+  </form>
+</dialog>
+
+<dialog id="modalSurtido">
     <form id="formSurtido">
       <div class="dialog-header">
         <div>
@@ -525,6 +1119,257 @@
       </div>
     </form>
   </dialog>
+
+  <dialog id="modalIncidenciaWhatsapp">
+
+  <form id="formIncidenciaWhatsapp">
+
+    <div class="dialog-header">
+
+      <div>
+        <h2>Reportar incidencia</h2>
+        <p>
+          Registra un problema relacionado con esta solicitud.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        class="icon-button"
+        data-close="modalIncidenciaWhatsapp"
+      >
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+    </div>
+
+
+    <input
+      type="hidden"
+      id="waIncidenciaSolicitudId"
+    >
+
+
+    <div class="form-grid">
+
+      <label class="span-2">
+        Motivo
+
+        <select
+          id="waIncidenciaMotivo"
+          required
+        >
+          <option value="">Seleccionar</option>
+
+          <option value="Producto no localizado">
+            Producto no localizado
+          </option>
+
+          <option value="Producto dañado">
+            Producto dañado
+          </option>
+
+          <option value="Cantidad insuficiente">
+            Cantidad insuficiente
+          </option>
+
+          <option value="Cliente no responde">
+            Cliente no responde
+          </option>
+
+          <option value="Problema con pago">
+            Problema con pago
+          </option>
+
+          <option value="Otro">
+            Otro
+          </option>
+
+        </select>
+      </label>
+
+
+      <label class="span-2">
+        Observaciones
+
+        <textarea
+          id="waIncidenciaObservaciones"
+          rows="4"
+          maxlength="500"
+          placeholder="Describe brevemente qué ocurrió..."
+          required
+        ></textarea>
+      </label>
+
+    </div>
+
+
+    <div class="dialog-actions">
+
+      <button
+        type="button"
+        class="ghost"
+        data-close="modalIncidenciaWhatsapp"
+      >
+        Cancelar
+      </button>
+
+      <button
+        type="submit"
+        class="primary"
+      >
+        Registrar incidencia
+      </button>
+
+    </div>
+
+  </form>
+
+</dialog>
+
+<dialog id="modalResolverIncidenciaWhatsapp">
+
+  <form id="formResolverIncidenciaWhatsapp">
+
+    <div class="dialog-header">
+
+      <div>
+        <h2>Resolver incidencia</h2>
+        <p>Indica cómo se solucionó el problema.</p>
+      </div>
+
+      <button
+        type="button"
+        class="icon-button"
+        data-close="modalResolverIncidenciaWhatsapp"
+      >
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+    </div>
+
+    <input
+      type="hidden"
+      id="waResolverIncidenciaId"
+    >
+
+    <div class="form-grid">
+
+      <label class="span-2">
+        Solución aplicada
+
+        <textarea
+          id="waResolverIncidenciaSolucion"
+          rows="4"
+          maxlength="500"
+          placeholder="Ej. Se localizó el producto en otra ubicación..."
+          required
+        ></textarea>
+      </label>
+
+    </div>
+
+    <div class="dialog-actions">
+
+      <button
+        type="button"
+        class="ghost"
+        data-close="modalResolverIncidenciaWhatsapp"
+      >
+        Cancelar
+      </button>
+
+      <button
+        type="submit"
+        class="primary"
+      >
+        Resolver incidencia
+      </button>
+
+    </div>
+
+  </form>
+
+</dialog>
+
+<dialog id="modalCancelarWhatsapp">
+
+  <form id="formCancelarWhatsapp">
+
+    <div class="dialog-header">
+      <div>
+        <h2>Cancelar solicitud</h2>
+        <p>Indica el motivo de la cancelación.</p>
+      </div>
+
+      <button
+        type="button"
+        class="icon-button"
+        data-close="modalCancelarWhatsapp"
+      >
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <input
+      type="hidden"
+      id="waCancelarSolicitudId"
+    >
+
+    <div class="form-grid">
+
+      <label class="span-2">
+        Motivo
+
+        <select
+          id="waCancelarMotivo"
+          required
+        >
+          <option value="">Seleccionar</option>
+          <option value="Cliente canceló">Cliente canceló</option>
+          <option value="Cliente no respondió">Cliente no respondió</option>
+          <option value="Producto no disponible">Producto no disponible</option>
+          <option value="Problema con pago">Problema con pago</option>
+          <option value="Duplicado">Solicitud duplicada</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </label>
+
+      <label class="span-2">
+        Observaciones
+
+        <textarea
+          id="waCancelarObservaciones"
+          rows="4"
+          maxlength="500"
+          placeholder="Agrega información adicional..."
+        ></textarea>
+      </label>
+
+    </div>
+
+    <div class="dialog-actions">
+
+      <button
+        type="button"
+        class="ghost"
+        data-close="modalCancelarWhatsapp"
+      >
+        Regresar
+      </button>
+
+      <button
+        type="submit"
+        class="danger"
+      >
+        Confirmar cancelación
+      </button>
+
+    </div>
+
+  </form>
+
+</dialog>
 
 
   <dialog id="modalEditarPedido" class="wide-dialog">

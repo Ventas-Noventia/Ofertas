@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Publicaciones | Noventia</title>
+  <link rel="stylesheet" href="./publicaciones.css">
+</head>
+<body>
+
+  <main id="vistaGenerador" class="page">
+    <header class="page-header">
+      <p class="brand">NOVENTIA</p>
+      <h1>Nueva publicación</h1>
+      <p>Agrega foto, nombre y precio. Nosotros generamos el enlace corto.</p>
+    </header>
+
+    <section class="card">
+      <label class="field photo-field">
+        <span>Foto del producto</span>
+        <input id="foto" type="file" accept="image/*" capture="environment">
+        <img id="previewFoto" class="photo-preview" alt="Vista previa del producto">
+      </label>
+
+      <label class="field">
+        <span>Nombre del producto</span>
+        <input id="nombreProducto" type="text" maxlength="160" placeholder="Ej. Licuadora Oster">
+      </label>
+
+      <label class="field">
+        <span>Precio</span>
+        <input id="precioProducto" type="number" min="1" step="0.01" placeholder="350">
+      </label>
+
+      <label class="field">
+        <span>Encargada</span>
+        <select id="encargada">
+          <option value="">Seleccionar</option>
+          <option value="FA|FRIDA AMARO">Frida Amaro</option>
+          <option value="LT|LETICIA TAFOYA">Leticia Tafoya</option>
+          <option value="HC|HELEN CHAVEZ">Helen Chavez</option>
+        </select>
+      </label>
+
+      <button id="btnGenerar" class="btn primary" type="button">
+        Generar publicación
+      </button>
+
+      <p id="mensajeEstado" class="status"></p>
+
+      <section id="resultado" class="result hidden">
+        <img id="resultadoFoto" class="result-image" alt="Producto">
+
+        <div class="result-info">
+          <h2 id="resultadoNombre"></h2>
+          <strong id="resultadoPrecio" class="result-price"></strong>
+          <p class="result-label">Enlace corto</p>
+          <div id="resultadoLink" class="short-link"></div>
+        </div>
+
+        <div class="actions">
+          <button id="btnCompartir" class="btn primary" type="button">
+            Compartir en WhatsApp
+          </button>
+
+          <button id="btnCopiar" class="btn secondary" type="button">
+            Copiar publicación
+          </button>
+
+          <button id="btnNuevo" class="btn ghost" type="button">
+            Publicar otro producto
+          </button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+
+  <section id="vistaRedireccion" class="redirect-view hidden">
+    <div class="redirect-card">
+      <div class="spinner"></div>
+      <p class="brand">NOVENTIA</p>
+      <h1>Abriendo WhatsApp...</h1>
+      <p id="mensajeRedireccion">Estamos preparando tu mensaje.</p>
+    </div>
+  </section>
+
+
+  <script type="module" src="./publicaciones.js"></script>
+</body>
+</html>

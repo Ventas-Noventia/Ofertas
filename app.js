@@ -47,6 +47,45 @@ let clientesPreparadosImportacion = [];
 let filtroPagadosPendientesActivo = false;
 let usuariosSistema = [];
 let cancelarEscuchaUsuarios = null;
+let cancelarEscuchaSolicitudesWhatsapp = null;
+
+
+const modalIncidenciaWhatsapp = $("#modalIncidenciaWhatsapp");
+const formIncidenciaWhatsapp = $("#formIncidenciaWhatsapp");
+const modalResolverIncidenciaWhatsapp = $("#modalResolverIncidenciaWhatsapp");
+const formResolverIncidenciaWhatsapp = $("#formResolverIncidenciaWhatsapp");
+const modalCancelarWhatsapp =$("#modalCancelarWhatsapp");
+const formCancelarWhatsapp = $("#formCancelarWhatsapp");
+
+let solicitudesWhatsapp = [];
+let productosWhatsappNueva = [];
+let productosWhatsappEdicion = [];
+
+let productoCapturaActualClave = "";
+let waProductoCapturaActualId = "";
+let waProductoEdicionCapturaActualId = "";
+
+let productoNuevoEditandoId = "";
+let waProductoNuevoEditandoId = "";
+let waProductoEdicionEditandoId = "";
+
+const ESTADOS_WHATSAPP_LABELS = {
+  confirmar: "Confirmar pedido",
+  pendiente_preparacion: "Pendiente de preparación",
+  preparado: "Preparado",
+  listo: "Listo",
+  finalizado: "Finalizado",
+  cancelado:"Cancelado"
+};
+
+const TRANSICIONES_WHATSAPP = {
+  confirmar: ["pendiente_preparacion"],
+  pendiente_preparacion: ["preparado"],
+  preparado: ["listo"],
+  listo: ["finalizado"],
+  finalizado: [],
+  cancelado: []
+};
 
 const ESTADOS = {
   EN_PROCESO: "En proceso",
@@ -72,6 +111,475 @@ function escapeHtml(valor = "") {
     "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"
   })[c]);
 }
+
+
+
+
+document.addEventListener("click", event => {
+
+  const boton =
+    event.target.closest("[data-wa-incidencia]");
+
+  if (!boton) return;
+
+  const solicitud =
+    solicitudesWhatsapp.find(
+      item => item.id === boton.dataset.waIncidencia
+    );
+
+  if (!solicitud) return;
+
+  if (solicitudWhatsappEstaCancelada(solicitud)) {
+    alert("No puedes reportar una incidencia en una solicitud cancelada.");
+    return;
+  }
+
+  $("#waIncidenciaSolicitudId").value =
+    solicitud.id;
+
+  $("#waIncidenciaMotivo").value = "";
+
+  $("#waIncidenciaObservaciones").value = "";
+
+  modalIncidenciaWhatsapp.showModal();
+
+});
+
+document
+  .querySelectorAll('[data-close="modalIncidenciaWhatsapp"]')
+  .forEach(boton => {
+
+    boton.addEventListener("click", () => {
+      modalIncidenciaWhatsapp.close();
+    });
+
+  });
+
+  formIncidenciaWhatsapp?.addEventListener(
+  "submit",
+  async event => {
+
+    event.preventDefault();
+
+
+    const id =
+      $("#waIncidenciaSolicitudId").value;
+
+    const motivo =
+      $("#waIncidenciaMotivo").value;
+
+    const observaciones =
+      $("#waIncidenciaObservaciones")
+        .value
+        .trim();
+
+
+    if (!id || !motivo || !observaciones) {
+      return;
+    }
+
+
+    const usuarioNombre =
+      perfilActual?.nombre ||
+      usuarioActual?.email ||
+      "Usuario";
+
+
+    try {
+
+      await updateDoc(
+        doc(
+          db,
+          "solicitudes_whatsapp",
+          id
+        ),
+        {
+
+          incidenciaActiva:
+            true,
+
+          incidenciaMotivo:
+            motivo,
+
+          incidenciaObservaciones:
+            observaciones,
+
+          incidenciaReportadaPor:
+            usuarioNombre,
+
+          incidenciaReportadaPorUid:
+            usuarioActual?.uid || "",
+
+          fechaIncidencia:
+            serverTimestamp(),
+
+          ultimaActualizacion:
+            serverTimestamp(),
+
+          historial:
+            arrayUnion({
+
+              tipo:
+                "INCIDENCIA_REPORTADA",
+
+              motivo:
+                motivo,
+
+              observaciones:
+                observaciones,
+
+              usuarioUid:
+                usuarioActual?.uid || "",
+
+              usuarioNombre:
+                usuarioNombre,
+
+              fechaISO:
+                new Date().toISOString()
+
+            })
+
+        }
+      );
+
+
+      modalIncidenciaWhatsapp.close();
+
+
+    } catch (error) {
+
+      console.error(
+        "Error registrando incidencia:",
+        error
+      );
+
+      alert(
+        "No se pudo registrar la incidencia."
+      );
+
+    }
+
+  }
+);
+
+
+document.addEventListener("click", event => {
+
+  const boton =
+    event.target.closest(
+      "[data-wa-resolver-incidencia]"
+    );
+
+  if (!boton) return;
+
+  const solicitud =
+    solicitudesWhatsapp.find(
+      item =>
+        item.id ===
+        boton.dataset.waResolverIncidencia
+    );
+
+  if (!solicitud) return;
+
+  if (!esAdministradorWhatsapp()) {
+    alert("Solo el administrador puede resolver incidencias.");
+    return;
+  }
+
+  if (solicitudWhatsappEstaCancelada(solicitud)) {
+    alert("Esta solicitud está cancelada y no puede resolver incidencias.");
+    return;
+  }
+
+  $("#waResolverIncidenciaId").value =
+    solicitud.id;
+
+  $("#waResolverIncidenciaSolucion").value =
+    "";
+
+  modalResolverIncidenciaWhatsapp.showModal();
+
+});
+
+document
+  .querySelectorAll(
+    '[data-close="modalResolverIncidenciaWhatsapp"]'
+  )
+  .forEach(boton => {
+
+    boton.addEventListener("click", () => {
+      modalResolverIncidenciaWhatsapp.close();
+    });
+
+  });
+
+formResolverIncidenciaWhatsapp?.addEventListener(
+  "submit",
+  async event => {
+
+    event.preventDefault();
+
+    const id =
+      $("#waResolverIncidenciaId").value;
+
+    const solucion =
+      $("#waResolverIncidenciaSolucion")
+        .value
+        .trim();
+
+    if (!id || !solucion) return;
+
+
+    const solicitud =
+      solicitudesWhatsapp.find(
+        item => item.id === id
+      );
+
+    if (!solicitud) {
+      alert("No se encontró la solicitud.");
+      return;
+    }
+
+    if (!esAdministradorWhatsapp()) {
+      alert("Solo el administrador puede resolver incidencias.");
+      return;
+    }
+
+    const usuarioNombre =
+      perfilActual?.nombre ||
+      usuarioActual?.email ||
+      "Usuario";
+
+
+    try {
+
+      await updateDoc(
+        doc(
+          db,
+          "solicitudes_whatsapp",
+          id
+        ),
+        {
+
+          incidenciaActiva:
+            false,
+
+          incidenciaSolucion:
+            solucion,
+
+          incidenciaResueltaPor:
+            usuarioNombre,
+
+          incidenciaResueltaPorUid:
+            usuarioActual?.uid || "",
+
+          fechaResolucionIncidencia:
+            serverTimestamp(),
+
+          ultimaActualizacion:
+            serverTimestamp(),
+
+          historial:
+            arrayUnion({
+
+              tipo:
+                "INCIDENCIA_RESUELTA",
+
+              motivo:
+                solicitud.incidenciaMotivo || "",
+
+              solucion:
+                solucion,
+
+              usuarioUid:
+                usuarioActual?.uid || "",
+
+              usuarioNombre:
+                usuarioNombre,
+
+              fechaISO:
+                new Date().toISOString()
+
+            })
+
+        }
+      );
+
+      modalResolverIncidenciaWhatsapp.close();
+
+    } catch (error) {
+
+      console.error(
+        "Error resolviendo incidencia:",
+        error
+      );
+
+      alert(
+        "No se pudo resolver la incidencia."
+      );
+
+    }
+
+  }
+);
+
+
+document.addEventListener("click", event => {
+
+  const boton =
+    event.target.closest("[data-wa-cancelar]");
+
+  if (!boton) return;
+
+  const solicitud =
+    solicitudesWhatsapp.find(
+      item => item.id === boton.dataset.waCancelar
+    );
+
+  if (!solicitud) return;
+
+  if (!esAdministradorWhatsapp()) {
+    alert("Solo el administrador puede cancelar solicitudes.");
+    return;
+  }
+
+  if (solicitudWhatsappEstaCancelada(solicitud)) {
+    alert("Esta solicitud ya está cancelada.");
+    return;
+  }
+
+  $("#waCancelarSolicitudId").value =
+    solicitud.id;
+
+  $("#waCancelarMotivo").value = "";
+
+  $("#waCancelarObservaciones").value = "";
+
+  modalCancelarWhatsapp.showModal();
+
+});
+
+document.querySelectorAll('[data-close="modalCancelarWhatsapp"]').forEach(boton => {
+    boton.addEventListener("click", () => {
+      modalCancelarWhatsapp.close();
+    });
+  });
+
+  formCancelarWhatsapp?.addEventListener(
+  "submit",
+  async event => {
+
+    event.preventDefault();
+
+    const id =
+      $("#waCancelarSolicitudId").value;
+
+    const motivo =
+      $("#waCancelarMotivo").value;
+
+    const observaciones =
+      $("#waCancelarObservaciones")
+        .value
+        .trim();
+
+    if (!id || !motivo) return;
+
+    const solicitud =
+      solicitudesWhatsapp.find(
+        item => item.id === id
+      );
+
+    if (!solicitud) return;
+
+    if (!esAdministradorWhatsapp()) {
+      alert("Solo el administrador puede cancelar solicitudes.");
+      return;
+    }
+
+    const usuarioNombre =
+      perfilActual?.nombre ||
+      usuarioActual?.email ||
+      "Usuario";
+
+    try {
+
+      await updateDoc(
+        doc(
+          db,
+          "solicitudes_whatsapp",
+          id
+        ),
+        {
+          estado:
+            "cancelado",
+
+          cancelado:
+            true,
+
+          motivoCancelacion:
+            motivo,
+
+          observacionesCancelacion:
+            observaciones,
+
+          canceladoPor:
+            usuarioNombre,
+
+          canceladoPorUid:
+            usuarioActual?.uid || "",
+
+          fechaCancelacion:
+            serverTimestamp(),
+
+          ultimaActualizacion:
+            serverTimestamp(),
+
+          historial:
+            arrayUnion({
+
+              tipo:
+                "SOLICITUD_CANCELADA",
+
+              estadoAnterior:
+                solicitud.estado,
+
+              motivo:
+                motivo,
+
+              observaciones:
+                observaciones,
+
+              usuarioUid:
+                usuarioActual?.uid || "",
+
+              usuarioNombre:
+                usuarioNombre,
+
+              fechaISO:
+                new Date().toISOString()
+
+            })
+
+        }
+      );
+
+      modalCancelarWhatsapp.close();
+
+    } catch (error) {
+
+      console.error(
+        "Error cancelando solicitud:",
+        error
+      );
+
+      alert(
+        "No se pudo cancelar la solicitud."
+      );
+
+    }
+
+  }
+);
 
 function moneda(valor) {
   return Number(valor || 0).toLocaleString("es-MX", {
@@ -404,6 +912,102 @@ function establecerCargaModal(modal, activo, texto = "Guardando cambios…") {
       delete control.dataset.disabledBeforeLoading;
     }
   }
+}
+
+function iniciarEscuchaSolicitudesWhatsapp() {
+
+  if (cancelarEscuchaSolicitudesWhatsapp) {
+    cancelarEscuchaSolicitudesWhatsapp();
+  }
+
+  const consulta = query(
+    collection(db, "solicitudes_whatsapp"),
+    orderBy("fechaCreacion", "desc")
+  );
+
+  cancelarEscuchaSolicitudesWhatsapp = onSnapshot(
+    consulta,
+
+    snapshot => {
+
+      solicitudesWhatsapp = snapshot.docs.map(documento => {
+
+        const data = documento.data();
+
+        return {
+          id: documento.id,
+          ...data,
+
+          fechaCreacion:
+            data.fechaCreacion?.toDate
+              ? data.fechaCreacion.toDate().toISOString()
+              : data.fechaCreacion || "",
+
+          ultimaActualizacion:
+            data.ultimaActualizacion?.toDate
+              ? data.ultimaActualizacion.toDate().toISOString()
+              : data.ultimaActualizacion || ""
+        };
+
+      });
+      actualizarFiltrosTrazabilidadWhatsapp();
+      renderSolicitudesWhatsapp();
+
+      if (!$("#waVistaKanban")?.classList.contains("hidden")) {
+        renderKanbanWhatsapp();
+      }
+
+    },
+
+    error => {
+
+      console.error(
+        "Error escuchando solicitudes WhatsApp:",
+        error
+      );
+
+    }
+  );
+
+}
+
+function inicializarFechasTrazabilidadWhatsapp() {
+
+  const inputDesde = $("#waTraceDesde");
+  const inputHasta = $("#waTraceHasta");
+
+  if (!inputDesde || !inputHasta) return;
+
+  const hoy = new Date();
+
+  const primerDia = new Date(
+    hoy.getFullYear(),
+    hoy.getMonth(),
+    1
+  );
+
+  const formatearFechaInput = fecha => {
+
+    const year = fecha.getFullYear();
+
+    const month = String(
+      fecha.getMonth() + 1
+    ).padStart(2, "0");
+
+    const day = String(
+      fecha.getDate()
+    ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+
+  };
+
+  inputDesde.value =
+    formatearFechaInput(primerDia);
+
+  inputHasta.value =
+    formatearFechaInput(hoy);
+
 }
 
 function mostrarResultadoModal(modal, texto) {
@@ -1257,17 +1861,76 @@ function buscarProductoCatalogo({ enfocarSiguiente = false } = {}) {
   return producto;
 }
 
+function prepararNuevoProductoEscaneadoPrincipal(
+  nuevaClave
+) {
+  const claveNueva =
+    limpiarClaveProducto(nuevaClave);
+
+  if (!claveNueva) return false;
+
+  if (productoCapturaActualClave) {
+    const datosActuales =
+      datosCapturaProductoPrincipal(
+        productoCapturaActualClave
+      );
+
+    if (
+      !validarCapturaProductoPrincipal(
+        datosActuales
+      )
+    ) {
+      $("#productoClave").value =
+        productoCapturaActualClave;
+
+      return false;
+    }
+
+    const agregado =
+      agregarProducto({
+        claveForzada:
+          productoCapturaActualClave,
+        limpiar: false
+      });
+
+    if (!agregado) {
+      $("#productoClave").value =
+        productoCapturaActualClave;
+
+      return false;
+    }
+  }
+
+  limpiarCapturaProductoPrincipal({
+    conservarClave: claveNueva
+  });
+
+  productoCapturaActualClave =
+    claveNueva;
+
+  $("#productoCantidad").value = "1";
+
+  buscarProductoCatalogo({
+    enfocarSiguiente: true
+  });
+
+  return true;
+}
+
 function manejarLecturaCodigo(event) {
   if (event.key !== "Enter") return;
 
   event.preventDefault();
   event.stopPropagation();
 
-  const producto = buscarProductoCatalogo({ enfocarSiguiente: true });
+  const nuevaClave =
+    limpiarClaveProducto(
+      $("#productoClave").value
+    );
 
-  // No agrega automáticamente la fila porque todavía puede faltar costo o cantidad.
-  // El lector completa la clave y el nombre; después el usuario confirma con Agregar.
-  return producto;
+  prepararNuevoProductoEscaneadoPrincipal(
+    nuevaClave
+  );
 }
 
 // =========================
@@ -1332,8 +1995,9 @@ async function procesarCodigoMovil(codigoLeido) {
 
   await cerrarEscanerMovil();
 
-  const producto = buscarProductoCatalogo({ enfocarSiguiente: true });
-  if (!producto) $("#productoNombre")?.focus();
+  prepararNuevoProductoEscaneadoPrincipal(
+    clave
+  );
 
   window.setTimeout(() => {
     procesandoCodigoMovil = false;
@@ -1676,6 +2340,7 @@ onAuthStateChanged(auth, async user => {
 
     iniciarEscuchaPedidos();
     iniciarEscuchaClientes();
+    iniciarEscuchaSolicitudesWhatsapp();
     if (perfilActual?.rol === "admin") iniciarEscuchaUsuarios();
   } catch (error) {
     console.error(error);
@@ -2112,94 +2777,460 @@ function actualizarModoDescuentoNuevo() {
 function renderProductosNuevo() {
   const cont = $("#productosNuevo");
   cont.innerHTML = "";
+
   productosNuevo.forEach((p, index) => {
     const tipo = $("#tipoDescuento").value || "NINGUNO";
-    const general = tipo === "TOTAL" ? Number($("#descuentoGeneral").value || 0) : 0;
-    const descuento = descuentoProductoAplicado(p, tipo, general);
-    const costoNeto = costoUnitarioConDescuento(p, tipo, general);
+    const general =
+      tipo === "TOTAL"
+        ? Number($("#descuentoGeneral").value || 0)
+        : 0;
+
+    const descuento =
+      descuentoProductoAplicado(p, tipo, general);
+
+    const costoNeto =
+      costoUnitarioConDescuento(p, tipo, general);
+
     const row = document.createElement("div");
-    row.className = `product-row ${tipo === "PRODUCTO" ? "with-discount-input" : ""}`;
-    row.innerHTML = `
-      <div><strong>${escapeHtml(p.nombre)}</strong><br><small>${escapeHtml(p.clave || "Sin clave")}</small></div>
-      <span>${descuento ? `<span class="price-original">${moneda(p.costo)}</span><br>${moneda(costoNeto)} c/u<br><small class="discount-badge">-${descuento}%</small>` : `${moneda(p.costo)} c/u`}</span>
-      <span>${p.cantidad} pza.</span>
-      ${tipo === "PRODUCTO" ? `<label class="inline-product-discount">Descuento %<input type="number" min="0" max="99" step="1" value="${Number(p.descuentoPorcentaje || 0)}"></label>` : ""}
-      <button type="button" class="danger">Quitar</button>`;
-    row.querySelector(".inline-product-discount input")?.addEventListener("input", event => {
-      p.descuentoPorcentaje = Number(event.target.value || 0);
-      actualizarTotalNuevo();
-    });
-    row.querySelector("button").addEventListener("click", () => {
-      productosNuevo.splice(index, 1);
-      renderProductosNuevo();
-      actualizarTotalNuevo();
-    });
+
+    if (productoNuevoEditandoId === p.idLinea) {
+      row.className = "product-row product-row-editing";
+
+      row.innerHTML = `
+        <label>
+          Clave
+          <input
+            type="text"
+            data-main-edit-clave
+            value="${escapeHtml(p.clave || "")}"
+          >
+        </label>
+
+        <label class="grow">
+          Producto
+          <input
+            type="text"
+            data-main-edit-nombre
+            value="${escapeHtml(p.nombre || "")}"
+          >
+        </label>
+
+        <label>
+          Precio
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            data-main-edit-costo
+            value="${Number(p.costo || 0)}"
+          >
+        </label>
+
+        <label>
+          Cantidad
+          <input
+            type="number"
+            min="1"
+            step="1"
+            data-main-edit-cantidad
+            value="${Number(p.cantidad || 1)}"
+          >
+        </label>
+
+        <div class="product-edit-actions">
+          <button
+            type="button"
+            class="secondary"
+            data-main-guardar-producto="${escapeHtml(p.idLinea)}"
+          >
+            Guardar
+          </button>
+
+          <button
+            type="button"
+            class="ghost"
+            data-main-cancelar-edicion-producto
+          >
+            Cancelar
+          </button>
+        </div>
+      `;
+    } else {
+      row.className =
+        `product-row ${tipo === "PRODUCTO" ? "with-discount-input" : ""}`;
+
+      row.innerHTML = `
+        <div>
+          <strong>${escapeHtml(p.nombre)}</strong>
+          <br>
+          <small>${escapeHtml(p.clave || "Sin clave")}</small>
+        </div>
+
+        <span>
+          ${
+            descuento
+              ? `
+                <span class="price-original">${moneda(p.costo)}</span>
+                <br>
+                ${moneda(costoNeto)} c/u
+                <br>
+                <small class="discount-badge">-${descuento}%</small>
+              `
+              : `${moneda(p.costo)} c/u`
+          }
+        </span>
+
+        <span>${p.cantidad} pza.</span>
+
+        ${
+          tipo === "PRODUCTO"
+            ? `
+              <label class="inline-product-discount">
+                Descuento %
+                <input
+                  type="number"
+                  min="0"
+                  max="99"
+                  step="1"
+                  value="${Number(p.descuentoPorcentaje || 0)}"
+                >
+              </label>
+            `
+            : ""
+        }
+
+        <div class="product-row-actions">
+          <button
+            type="button"
+            class="secondary"
+            data-main-editar-producto="${escapeHtml(p.idLinea)}"
+          >
+            Editar
+          </button>
+
+          <button
+            type="button"
+            class="danger"
+            data-main-quitar-producto="${escapeHtml(p.idLinea)}"
+          >
+            Quitar
+          </button>
+        </div>
+      `;
+
+      row
+        .querySelector(".inline-product-discount input")
+        ?.addEventListener("input", event => {
+          p.descuentoPorcentaje =
+            Number(event.target.value || 0);
+
+          actualizarTotalNuevo();
+        });
+    }
+
     cont.appendChild(row);
   });
 }
 
-function agregarProducto() {
-  const clave = limpiarClaveProducto($("#productoClave").value);
-  $("#productoClave").value = clave;
-
-  if (clave && !$("#productoNombre").value.trim()) {
-    buscarProductoCatalogo();
-  }
-
-  const nombre = $("#productoNombre").value.trim();
-  const costo = Number($("#productoCosto").value);
-  const cantidad = Number($("#productoCantidad").value);
-  const descuento = Number($("#productoDescuento").value || 0);
-
-  if (!nombre) return alert("Escribe el nombre del producto.");
-  if (!Number.isFinite(costo) || costo <= 0) return alert("El costo debe ser mayor a cero.");
-  if (!Number.isInteger(cantidad) || cantidad < 1) return alert("La cantidad debe ser un número entero mayor a cero.");
-  if (!Number.isInteger(descuento) || descuento < 0 || descuento > 99) return alert("El descuento debe ser un número entero entre 1 y 99, o 0 para no aplicar.");
-
-  const claveNormalizada = limpiarClaveProducto(clave);
-  const nombreNormalizado = nombre.trim().toLowerCase();
-
-  const productoExistente = productosNuevo.find(producto => {
-    const mismaClave =
-      claveNormalizada &&
-      limpiarClaveProducto(producto.clave) === claveNormalizada;
-
-    const mismoProductoSinClave =
-      !claveNormalizada &&
-      !limpiarClaveProducto(producto.clave) &&
-      String(producto.nombre || "").trim().toLowerCase() === nombreNormalizado &&
-      Number(producto.costo || 0) === costo;
-
-    return mismaClave || mismoProductoSinClave;
-  });
-
-  if (productoExistente) {
-    productoExistente.cantidad =
-      Number(productoExistente.cantidad || 0) + cantidad;
-    if ($("#tipoDescuento").value === "PRODUCTO") productoExistente.descuentoPorcentaje = descuento;
-
-    // The first registered name and price are preserved.
-    // Only the quantity is accumulated when the same product is scanned again.
-  } else {
-    productosNuevo.push({
-      idLinea: crypto.randomUUID(),
-      clave,
-      nombre,
-      costo,
-      cantidad,
-      descuentoPorcentaje: $("#tipoDescuento").value === "PRODUCTO" ? descuento : 0
-    });
-  }
-
-  $("#productoClave").value = "";
+function limpiarCapturaProductoPrincipal({
+  conservarClave = ""
+} = {}) {
+  $("#productoClave").value = conservarClave;
   $("#productoNombre").value = "";
   $("#productoCosto").value = "";
   $("#productoCantidad").value = "1";
   $("#productoDescuento").value = "";
-  $("#productoClave").focus();
+}
+
+function datosCapturaProductoPrincipal(
+  claveForzada = null
+) {
+  const clave =
+    limpiarClaveProducto(
+      claveForzada !== null
+        ? claveForzada
+        : $("#productoClave").value
+    );
+
+  return {
+    clave,
+    nombre:
+      $("#productoNombre").value.trim(),
+    costo:
+      Number($("#productoCosto").value),
+    cantidad:
+      Number($("#productoCantidad").value),
+    descuento:
+      Number($("#productoDescuento").value || 0)
+  };
+}
+
+function validarCapturaProductoPrincipal(
+  datos,
+  { mostrarAlertas = true } = {}
+) {
+  const error = mensaje => {
+    if (mostrarAlertas) alert(mensaje);
+    return false;
+  };
+
+  if (!datos.nombre) {
+    return error(
+      "El producto actual no tiene nombre. Completa el producto antes de escanear otro."
+    );
+  }
+
+  if (
+    !Number.isFinite(datos.costo) ||
+    datos.costo <= 0
+  ) {
+    return error(
+      "El producto actual no tiene un precio válido. Captura el precio antes de escanear otro producto."
+    );
+  }
+
+  if (
+    !Number.isInteger(datos.cantidad) ||
+    datos.cantidad < 1
+  ) {
+    return error(
+      "El producto actual no tiene una cantidad válida. La cantidad mínima es 1."
+    );
+  }
+
+  if (
+    !Number.isInteger(datos.descuento) ||
+    datos.descuento < 0 ||
+    datos.descuento > 99
+  ) {
+    return error(
+      "El descuento debe ser un número entero entre 0 y 99."
+    );
+  }
+
+  return true;
+}
+
+function agregarProducto(opciones = {}) {
+  const claveForzada =
+    opciones &&
+    typeof opciones === "object" &&
+    "claveForzada" in opciones
+      ? opciones.claveForzada
+      : null;
+
+  const limpiar =
+    !(
+      opciones &&
+      typeof opciones === "object" &&
+      opciones.limpiar === false
+    );
+
+  const datos =
+    datosCapturaProductoPrincipal(
+      claveForzada
+    );
+
+  if (
+    datos.clave &&
+    !datos.nombre &&
+    claveForzada === null
+  ) {
+    buscarProductoCatalogo();
+    datos.nombre =
+      $("#productoNombre").value.trim();
+    datos.costo =
+      Number($("#productoCosto").value);
+  }
+
+  if (!validarCapturaProductoPrincipal(datos)) {
+    return false;
+  }
+
+  const claveNormalizada =
+    limpiarClaveProducto(datos.clave);
+
+  const nombreNormalizado =
+    datos.nombre
+      .trim()
+      .toLowerCase();
+
+  const productoExistente =
+    productosNuevo.find(producto => {
+      const mismaClave =
+        claveNormalizada &&
+        limpiarClaveProducto(producto.clave) ===
+          claveNormalizada;
+
+      const mismoProductoSinClave =
+        !claveNormalizada &&
+        !limpiarClaveProducto(producto.clave) &&
+        String(producto.nombre || "")
+          .trim()
+          .toLowerCase() === nombreNormalizado &&
+        Number(producto.costo || 0) === datos.costo;
+
+      return mismaClave || mismoProductoSinClave;
+    });
+
+  if (productoExistente) {
+    productoExistente.cantidad =
+      Number(productoExistente.cantidad || 0) +
+      datos.cantidad;
+
+    if ($("#tipoDescuento").value === "PRODUCTO") {
+      productoExistente.descuentoPorcentaje =
+        datos.descuento;
+    }
+  } else {
+    productosNuevo.push({
+      idLinea: crypto.randomUUID(),
+      clave: datos.clave,
+      nombre: datos.nombre,
+      costo: datos.costo,
+      cantidad: datos.cantidad,
+      descuentoPorcentaje:
+        $("#tipoDescuento").value === "PRODUCTO"
+          ? datos.descuento
+          : 0
+    });
+  }
+
+  if (limpiar) {
+    limpiarCapturaProductoPrincipal();
+    productoCapturaActualClave = "";
+    $("#productoClave").focus();
+  }
+
+  renderProductosNuevo();
+  actualizarTotalNuevo();
+
+  return true;
+}
+
+function editarProductoNuevo(idLinea) {
+  productoNuevoEditandoId = idLinea;
+  renderProductosNuevo();
+}
+
+function guardarEdicionProductoNuevo(idLinea) {
+  const producto =
+    productosNuevo.find(
+      item => item.idLinea === idLinea
+    );
+
+  const fila =
+    document.querySelector(
+      `[data-main-guardar-producto="${CSS.escape(idLinea)}"]`
+    )?.closest(".product-row");
+
+  if (!producto || !fila) return;
+
+  const clave =
+    limpiarClaveProducto(
+      fila.querySelector("[data-main-edit-clave]")
+        ?.value
+    );
+
+  const nombre =
+    fila
+      .querySelector("[data-main-edit-nombre]")
+      ?.value
+      .trim() || "";
+
+  const costo =
+    Number(
+      fila.querySelector("[data-main-edit-costo]")
+        ?.value
+    );
+
+  const cantidad =
+    Number(
+      fila.querySelector("[data-main-edit-cantidad]")
+        ?.value
+    );
+
+  if (!nombre) {
+    alert("El producto debe tener nombre.");
+    return;
+  }
+
+  if (!Number.isFinite(costo) || costo <= 0) {
+    alert("El precio debe ser mayor a cero.");
+    return;
+  }
+
+  if (!Number.isInteger(cantidad) || cantidad < 1) {
+    alert("La cantidad mínima es 1.");
+    return;
+  }
+
+  producto.clave = clave;
+  producto.nombre = nombre;
+  producto.costo = costo;
+  producto.cantidad = cantidad;
+
+  productoNuevoEditandoId = "";
+
   renderProductosNuevo();
   actualizarTotalNuevo();
 }
+
+document.addEventListener("click", event => {
+  const editar =
+    event.target.closest(
+      "[data-main-editar-producto]"
+    );
+
+  if (editar) {
+    editarProductoNuevo(
+      editar.dataset.mainEditarProducto
+    );
+    return;
+  }
+
+  const guardar =
+    event.target.closest(
+      "[data-main-guardar-producto]"
+    );
+
+  if (guardar) {
+    guardarEdicionProductoNuevo(
+      guardar.dataset.mainGuardarProducto
+    );
+    return;
+  }
+
+  const cancelar =
+    event.target.closest(
+      "[data-main-cancelar-edicion-producto]"
+    );
+
+  if (cancelar) {
+    productoNuevoEditandoId = "";
+    renderProductosNuevo();
+    return;
+  }
+
+  const quitar =
+    event.target.closest(
+      "[data-main-quitar-producto]"
+    );
+
+  if (quitar) {
+    productosNuevo =
+      productosNuevo.filter(
+        producto =>
+          producto.idLinea !==
+          quitar.dataset.mainQuitarProducto
+      );
+
+    productoNuevoEditandoId = "";
+
+    renderProductosNuevo();
+    actualizarTotalNuevo();
+  }
+});
 
 function validarPedido() {
   const tipoOperacion = $("#tipoOperacion").value;
@@ -3203,6 +4234,8 @@ function abrirNuevoPedido(tipoOperacion) {
   $("#ubicacion").required = false;
 
   productosNuevo = [];
+  productoCapturaActualClave = "";
+  productoNuevoEditandoId = "";
   renderProductosNuevo();
   actualizarTotalNuevo();
 
@@ -3220,9 +4253,418 @@ function abrirNuevoPedido(tipoOperacion) {
   setTimeout(() => $("#productoClave").focus(), 100);
 }
 
-$("#btnAlmacen").addEventListener("click", () => abrirNuevoPedido("ALM"));
-$("#btnBazar").addEventListener("click", () => abrirNuevoPedido("BAZ"));
-$("#btnVentaRapida").addEventListener("click", () => abrirNuevoPedido("VR"));
+
+
+function obtenerClaseEstadoWhatsapp(estado) {
+  return {
+    confirmar: "wa-status-confirmar",
+    pendiente_preparacion: "wa-status-pendiente",
+    preparado: "wa-status-preparado",
+    listo: "wa-status-listo",
+    finalizado: "wa-status-finalizado"
+  }[estado] || "";
+}
+
+function obtenerTiempoTranscurrido(fecha) {
+  if (!fecha) return "";
+  const minutos = Math.max(0, Math.floor((Date.now() - new Date(fecha).getTime()) / 60000));
+  if (minutos < 1) return "Ahora";
+  if (minutos < 60) return `Hace ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `Hace ${horas} h`;
+  return `Hace ${Math.floor(horas / 24)} día(s)`;
+}
+
+function obtenerSiguienteEstadoWhatsapp(estado) {
+  return {
+    confirmar: ["pendiente_preparacion", "Confirmar pedido"],
+    pendiente_preparacion: ["preparado", "Marcar preparado"],
+    preparado: ["listo", "Marcar listo"],
+    listo: ["finalizado", "Finalizar pedido"]
+  }[estado] || null;
+}
+
+function renderSolicitudesWhatsapp() {
+  const container = $("#whatsappSolicitudesContainer");
+  if (!container) return;
+  const search = $("#waSearch")?.value.trim().toLowerCase() || "";
+  const status = $("#waStatusFilter")?.value || "todos";
+  const filtradas = solicitudesWhatsapp.filter(item => {
+    const texto = [
+      item.referencia,
+      item.cliente,
+      item.telefono,
+      resumenProductosWhatsappTexto(item),
+      item.grupo,
+      item.responsable
+    ].filter(Boolean).join(" ").toLowerCase();
+    return (!search || texto.includes(search)) && (status === "todos" || item.estado === status);
+  });
+
+  container.innerHTML = filtradas.length ? filtradas.map(item => {
+    const siguiente = obtenerSiguienteEstadoWhatsapp(normalizarEstadoWhatsapp(item.estado));
+    return `
+      <article class="whatsapp-order-card">
+        <div class="whatsapp-order-top">
+          <div><div class="whatsapp-order-reference">${escapeHtml(item.referencia)}</div><div class="whatsapp-order-client">${escapeHtml(item.cliente || "Cliente sin nombre")}</div></div>
+          <div class="whatsapp-order-time">${obtenerTiempoTranscurrido(item.fechaCreacion)}</div>
+        </div>
+        <div class="whatsapp-order-info">
+          <div class="whatsapp-order-field"><span class="whatsapp-order-label">Productos</span><span class="whatsapp-order-value">${escapeHtml(resumenProductosWhatsappTexto(item))}</span></div>
+          <div class="whatsapp-order-field"><span class="whatsapp-order-label">Precio</span><span class="whatsapp-order-value">${moneda(item.monto)}</span></div>
+          <div class="whatsapp-order-field"><span class="whatsapp-order-label">Grupo</span><span class="whatsapp-order-value">${escapeHtml(item.grupo || "-")}</span></div>
+          <div class="whatsapp-order-field"><span class="whatsapp-order-label">Responsable</span><span class="whatsapp-order-value">${escapeHtml(item.responsablePreparacion || "Sin asignar")}</span></div>
+        </div>
+        <div class="whatsapp-order-bottom">
+          ${
+            solicitudWhatsappEstaCancelada(item)
+              ? ""
+              : `<button type="button" class="wa-btn-whatsapp" data-wa-contactar="${escapeHtml(item.id)}"><i class="fa-brands fa-whatsapp"></i> ${obtenerTextoBotonWhatsapp(item.estado)}</button>`
+          }
+
+          <button
+            type="button"
+            class="wa-btn-historial"
+            data-wa-historial="${escapeHtml(item.id)}"
+          >
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            Ver historial
+          </button>
+
+          ${
+            esAdministradorWhatsapp() &&
+            !solicitudWhatsappEstaCancelada(item)
+              ? `
+                <button
+                  type="button"
+                  class="wa-btn-editar"
+                  data-wa-editar="${escapeHtml(item.id)}"
+                >
+                  <i class="fa-solid fa-pen"></i>
+                  Editar
+                </button>
+              `
+              : ""
+          }
+
+          <span class="wa-status ${obtenerClaseEstadoWhatsapp(item.estado)}">
+            ${ESTADOS_WHATSAPP_LABELS[normalizarEstadoWhatsapp(item.estado)] || item.estado}
+          </span>
+
+          ${
+            solicitudWhatsappEstaCancelada(item)
+              ? `<button type="button" class="wa-btn-secondary" disabled>Solicitud cancelada</button>`
+              : siguiente
+                ? `<button type="button" class="wa-btn-primary" data-wa-id="${item.id}" data-wa-next="${siguiente[0]}">${siguiente[1]}</button>`
+                : `<button type="button" class="wa-btn-secondary" disabled>Finalizado</button>`
+          }
+        </div>
+      </article>`;
+  }).join("") : '<div class="empty">No hay solicitudes para mostrar.</div>';
+
+  const contar = estado => solicitudesWhatsapp.filter(item => item.estado === estado).length;
+  const ids = { confirmar: "waCountConfirmar", pendiente_preparacion: "waCountPendiente", preparado: "waCountPreparado", listo: "waCountListo", finalizado: "waCountFinalizado" };
+  Object.entries(ids).forEach(([estado, id]) => { const el = document.getElementById(id); if (el) el.textContent = contar(estado); });
+}
+
+function nombreResponsableWhatsapp(solicitud = {}) {
+  return String(solicitud.responsablePreparacion || solicitud.responsable || "").trim();
+}
+
+function uidResponsableWhatsapp(solicitud = {}) {
+  return String(solicitud.responsablePreparacionUid || solicitud.responsableUid || "").trim();
+}
+
+function usuarioPuedeOperarSolicitudWhatsapp(solicitud = {}) {
+  if (esAdministradorWhatsapp()) return true;
+  const uid = uidResponsableWhatsapp(solicitud);
+  if (uid && usuarioActual?.uid) return uid === usuarioActual.uid;
+  const responsable = nombreResponsableWhatsapp(solicitud).toLowerCase();
+  const actual = String(perfilActual?.nombre || usuarioActual?.email || "").trim().toLowerCase();
+  return Boolean(responsable && actual && responsable === actual);
+}
+
+function validarDatosSolicitudWhatsappParaAvanzar(
+  solicitud,
+  estadoDestino
+) {
+  const productos =
+    obtenerProductosWhatsapp(solicitud);
+
+  if (!String(solicitud.cliente || "").trim()) {
+    return "La solicitud no tiene cliente registrado.";
+  }
+
+  if (!String(solicitud.telefono || "").trim()) {
+    return "La solicitud no tiene teléfono registrado.";
+  }
+
+  if (!productos.length) {
+    return "La solicitud no tiene productos agregados.";
+  }
+
+  const productoInvalido =
+    productos.find(producto => {
+      const precio = Number(producto.precio);
+      const cantidad = Number(producto.cantidad);
+
+      return (
+        !String(producto.nombre || "").trim() ||
+        !Number.isFinite(precio) ||
+        precio <= 0 ||
+        !Number.isInteger(cantidad) ||
+        cantidad < 1
+      );
+    });
+
+  if (productoInvalido) {
+    return "Hay un producto con precio en 0, sin nombre o con cantidad inválida. Corrige el pedido antes de avanzar.";
+  }
+
+  // La validación completa de entrega es obligatoria al finalizar.
+  if (estadoDestino === "finalizado") {
+    const tipoEntrega =
+      String(solicitud.tipoEntrega || "").trim();
+
+    if (!tipoEntrega) {
+      return "No se ha definido el tipo de entrega.";
+    }
+
+    if (
+      tipoEntrega === "PUNTO_ENTREGA" &&
+      !String(
+        solicitud.puntoEntrega ||
+        solicitud.ubicacion ||
+        ""
+      ).trim()
+    ) {
+      return "Falta seleccionar el punto de entrega.";
+    }
+
+    if (
+      tipoEntrega === "DOMICILIO" &&
+      !String(solicitud.ubicacion || "").trim()
+    ) {
+      return "Falta capturar el domicilio completo.";
+    }
+  }
+
+  return "";
+}
+
+async function registrarIntentoBloqueadoWhatsapp(
+  solicitud,
+  estadoDestino,
+  motivo
+) {
+  if (!solicitud?.id || !motivo) return;
+
+  try {
+    await updateDoc(
+      doc(
+        db,
+        "solicitudes_whatsapp",
+        solicitud.id
+      ),
+      {
+        historial: arrayUnion({
+          tipo: "TRANSICION_BLOQUEADA",
+          estadoAnterior:
+            normalizarEstadoWhatsapp(
+              solicitud.estado
+            ),
+          estadoIntentado:
+            normalizarEstadoWhatsapp(
+              estadoDestino
+            ),
+          motivo,
+          usuarioUid:
+            usuarioActual?.uid || "",
+          usuarioNombre:
+            perfilActual?.nombre ||
+            usuarioActual?.email ||
+            "Usuario",
+          fechaISO:
+            new Date().toISOString()
+        }),
+        ultimaActualizacion:
+          serverTimestamp()
+      }
+    );
+  } catch (error) {
+    console.warn(
+      "No se pudo registrar el intento bloqueado:",
+      error
+    );
+  }
+}
+
+function validarCambioOperativoWhatsapp(
+  solicitud,
+  estadoDestino
+) {
+  if (solicitudWhatsappEstaCancelada(solicitud)) {
+    return "Esta solicitud está cancelada y ya no puede cambiar de estado.";
+  }
+
+  if (solicitud.incidenciaActiva) {
+    return "Esta solicitud tiene una incidencia activa. Debe resolverse antes de continuar.";
+  }
+
+  const errorDatos =
+    validarDatosSolicitudWhatsappParaAvanzar(
+      solicitud,
+      estadoDestino
+    );
+
+  if (errorDatos) return errorDatos;
+
+  const requiereResponsable =
+    ["preparado", "listo", "finalizado"]
+      .includes(estadoDestino);
+
+  if (
+    requiereResponsable &&
+    !nombreResponsableWhatsapp(solicitud)
+  ) {
+    return "Primero alguien debe tomar la solicitud antes de avanzar en la preparación.";
+  }
+
+  if (
+    requiereResponsable &&
+    !usuarioPuedeOperarSolicitudWhatsapp(
+      solicitud
+    )
+  ) {
+    return `Esta solicitud está asignada a ${nombreResponsableWhatsapp(solicitud)}. Solo esa persona o un administrador puede avanzarla.`;
+  }
+
+  return "";
+}
+
+async function cambiarEstadoWhatsapp(id, nuevoEstado) {
+
+  const solicitud = solicitudesWhatsapp.find(
+    item => item.id === id
+  );
+
+  if (!solicitud) return;
+
+  const estadoActual = normalizarEstadoWhatsapp(solicitud.estado);
+  const estadoDestino = normalizarEstadoWhatsapp(nuevoEstado);
+
+  if (estadoActual === estadoDestino) return;
+
+  const estadosPermitidos =
+    TRANSICIONES_WHATSAPP[estadoActual] || [];
+
+  if (!estadosPermitidos.includes(estadoDestino)) {
+    const motivoBloqueo =
+      `No puedes cambiar de "${ESTADOS_WHATSAPP_LABELS[estadoActual] || estadoActual}" a "${ESTADOS_WHATSAPP_LABELS[estadoDestino] || estadoDestino}".`;
+
+    alert(motivoBloqueo);
+
+    await registrarIntentoBloqueadoWhatsapp(
+      solicitud,
+      estadoDestino,
+      motivoBloqueo
+    );
+
+    renderSolicitudesWhatsapp();
+
+    if (!$("#waVistaKanban")?.classList.contains("hidden")) {
+      renderKanbanWhatsapp();
+    }
+
+    return;
+  }
+
+  const errorOperativo =
+    validarCambioOperativoWhatsapp(
+      solicitud,
+      estadoDestino
+    );
+
+  if (errorOperativo) {
+    alert(errorOperativo);
+
+    await registrarIntentoBloqueadoWhatsapp(
+      solicitud,
+      estadoDestino,
+      errorOperativo
+    );
+
+    renderSolicitudesWhatsapp();
+    if (!$("#waVistaKanban")?.classList.contains("hidden")) renderKanbanWhatsapp();
+    return;
+  }
+
+  const camposEstado = {};
+
+  switch (estadoDestino) {
+    case "pendiente_preparacion":
+      camposEstado.fechaConfirmacion = serverTimestamp();
+      break;
+
+    case "preparado":
+      camposEstado.fechaPreparado = serverTimestamp();
+      break;
+
+    case "listo":
+      camposEstado.fechaListo = serverTimestamp();
+      break;
+
+    case "finalizado":
+      camposEstado.fechaFinalizado = serverTimestamp();
+      break;
+  }
+
+  try {
+    await updateDoc(
+      doc(db, "solicitudes_whatsapp", id),
+      {
+        estado: estadoDestino,
+        ultimaActualizacion: serverTimestamp(),
+        ...camposEstado,
+
+        historial: arrayUnion({
+          tipo: "CAMBIO_ESTADO",
+          estadoAnterior: estadoActual,
+          estadoNuevo: estadoDestino,
+          usuarioUid: usuarioActual?.uid || "",
+          usuarioNombre:
+            perfilActual?.nombre ||
+            usuarioActual?.email ||
+            "Usuario",
+          fechaISO: new Date().toISOString()
+        })
+      }
+    );
+
+  } catch (error) {
+    console.error(
+      "Error al cambiar estado de solicitud WhatsApp:",
+      error
+    );
+
+    alert("No se pudo actualizar el estado de la solicitud.");
+  }
+}
+
+function mostrarVistaPedidos() {
+  $("#vistaWhatsapp")?.classList.add("hidden");
+  $("#vistaPedidos")?.classList.remove("hidden");
+}
+
+function mostrarVistaWhatsapp() {
+  $("#vistaPedidos")?.classList.add("hidden");
+  $("#vistaWhatsapp")?.classList.remove("hidden");
+  renderSolicitudesWhatsapp();
+}
+
+$("#btnAlmacen").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("ALM"); });
+$("#btnBazar").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("BAZ"); });
+$("#btnVentaRapida").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("VR"); });
 
 $("#btnReporteCaja").addEventListener("click", abrirReporteCaja);
 $("#btnExportar").addEventListener("click", exportarPedidos);
@@ -3236,6 +4678,7 @@ $("#btnExportarCaja").addEventListener("click", exportarCaja);
 $("#btnImprimirCaja").addEventListener("click", imprimirCaja);
 $("#btnAgregarProducto").addEventListener("click", agregarProducto);
 $("#productoClave").addEventListener("keydown", manejarLecturaCodigo);
+
 
 const btnEscanearCodigo = $("#btnEscanearCodigo");
 const btnCerrarEscaner = $("#btnCerrarEscaner");
@@ -3252,9 +4695,25 @@ modalEscaner?.addEventListener("cancel", event => {
 modalEscaner?.addEventListener("close", () => {
   if (escanerMovilActivo) detenerEscanerMovil();
 });
-$("#productoClave").addEventListener("change", () => buscarProductoCatalogo());
+$("#productoClave").addEventListener("change", () => {
+  const clave =
+    limpiarClaveProducto(
+      $("#productoClave").value
+    );
+
+  if (!productoCapturaActualClave) {
+    productoCapturaActualClave = clave;
+    $("#productoCantidad").value = "1";
+  }
+
+  buscarProductoCatalogo();
+});
+
 $("#productoClave").addEventListener("blur", () => {
-  if ($("#productoClave").value.trim() && !$("#productoNombre").value.trim()) {
+  if (
+    $("#productoClave").value.trim() &&
+    !$("#productoNombre").value.trim()
+  ) {
     buscarProductoCatalogo();
   }
 });
@@ -3326,9 +4785,4167 @@ $("#resultadosClientes").addEventListener("click", event => {
   seleccionarCliente(clientesFrecuentes.find(cliente => cliente.id === boton.dataset.clientId));
 });
 
+const btnWaVistaLista = $("#btnWaVistaLista");
+const btnWaVistaKanban = $("#btnWaVistaKanban");
+
+const waVistaLista = $("#waVistaLista");
+const waVistaKanban = $("#waVistaKanban");
+
+const btnWaVistaTrazabilidad = $("#btnWaVistaTrazabilidad");
+const waVistaTrazabilidad = $("#waVistaTrazabilidad");
+
+waVistaTrazabilidad?.classList.add("hidden");
+
+btnWaVistaTrazabilidad?.addEventListener("click", () => {
+
+  waVistaLista?.classList.add("hidden");
+  waVistaKanban?.classList.add("hidden");
+  waVistaTrazabilidad?.classList.remove("hidden");
+
+  btnWaVistaLista?.classList.remove("active");
+  btnWaVistaKanban?.classList.remove("active");
+  btnWaVistaTrazabilidad.classList.add("active");
+if (
+  !$("#waTraceDesde")?.value &&
+  !$("#waTraceHasta")?.value
+) {
+  inicializarFechasTrazabilidadWhatsapp();
+}
+  renderTrazabilidadWhatsapp();
+
+});
+
+
+btnWaVistaLista?.addEventListener("click", () => {
+  waVistaLista?.classList.remove("hidden");
+  waVistaKanban?.classList.add("hidden");
+  waVistaTrazabilidad?.classList.add("hidden");
+
+  btnWaVistaLista?.classList.add("active");
+  btnWaVistaKanban?.classList.remove("active");
+  btnWaVistaTrazabilidad?.classList.remove("active");
+
+  renderSolicitudesWhatsapp();
+});
+
+btnWaVistaKanban?.addEventListener("click", () => {
+  waVistaLista?.classList.add("hidden");
+  waVistaKanban?.classList.remove("hidden");
+  waVistaTrazabilidad?.classList.add("hidden");
+
+  btnWaVistaLista?.classList.remove("active");
+  btnWaVistaKanban?.classList.add("active");
+  btnWaVistaTrazabilidad?.classList.remove("active");
+
+  renderKanbanWhatsapp();
+});
+
+
+function renderTrazabilidadWhatsapp() {
+
+  const tbody = $("#waTraceBody");
+
+  if (!tbody) return;
+
+
+  const desde =
+    $("#waTraceDesde")?.value || "";
+
+  const hasta =
+    $("#waTraceHasta")?.value || "";
+
+  const vendedor =
+    $("#waTraceVendedor")?.value || "todos";
+
+  const ubicacion =
+    $("#waTraceUbicacion")?.value || "todos";
+
+  const estado =
+    $("#waTraceEstado")?.value || "todos";
+
+
+  // const solicitudes = solicitudesWhatsapp.filter(item => {
+
+  //   const fecha =
+  //     obtenerFechaWhatsapp(item.fechaCreacion);
+
+  //   if (
+  //     desde &&
+  //     fecha &&
+  //     fecha < new Date(`${desde}T00:00:00`)
+  //   ) {
+  //     return false;
+  //   }
+
+  //   if (
+  //     hasta &&
+  //     fecha &&
+  //     fecha > new Date(`${hasta}T23:59:59`)
+  //   ) {
+  //     return false;
+  //   }
+
+  //   if (
+  //     vendedor !== "todos" &&
+  //     item.vendedor !== vendedor
+  //   ) {
+  //     return false;
+  //   }
+
+  //   if (
+  //     ubicacion !== "todos" &&
+  //     item.ubicacion !== ubicacion
+  //   ) {
+  //     return false;
+  //   }
+
+  //   if (
+  //     estado !== "todos" &&
+  //     item.estado !== estado
+  //   ) {
+  //     return false;
+  //   }
+
+  //   return true;
+
+  // });
+
+  const solicitudes = obtenerSolicitudesFiltradasTrazabilidadWhatsapp();
+
+  tbody.innerHTML =
+    solicitudes.length
+      ? solicitudes.map(item => {
+
+          return `
+            <tr>
+
+              <td>
+                <strong>
+                  ${escapeHtml(item.referencia || "-")}
+                </strong>
+              </td>
+
+              <td>
+                ${escapeHtml(item.cliente || "-")}
+              </td>
+
+              <td>
+                ${moneda(Number(item.monto || 0))}
+              </td>
+
+              <td>
+                ${escapeHtml(item.ubicacion || "-")}
+              </td>
+
+              <td>
+                ${escapeHtml(item.vendedor || "-")}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  item.responsablePreparacion ||
+                  "-"
+                )}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  ESTADOS_WHATSAPP_LABELS[item.estado] ||
+                  item.estado ||
+                  "-"
+                )}
+              </td>
+
+              <td>
+                ${formatearFechaTrazabilidad(
+                  item.fechaCreacion
+                )}
+              </td>
+
+              <td>
+                ${formatearFechaTrazabilidad(
+                  item.fechaPreparado
+                )}
+              </td>
+
+              <td>
+                ${formatearFechaTrazabilidad(
+                  item.fechaFinalizado
+                )}
+              </td>
+
+              <td>
+                ${calcularTiempoTotalWhatsapp(item)}
+              </td>
+
+            </tr>
+          `;
+
+        }).join("")
+
+      : `
+        <tr>
+          <td colspan="11" class="wa-trace-empty">
+            No hay solicitudes para los filtros seleccionados.
+          </td>
+        </tr>
+      `;
+
+
+  const montoTotal =
+    solicitudes.reduce(
+      (total, item) =>
+        total + Number(item.monto || 0),
+      0
+    );
+
+
+  const finalizadas =
+    solicitudes.filter(
+      item => item.estado === "finalizado"
+    );
+
+
+  $("#waTraceTotal").textContent =
+    solicitudes.length;
+
+  $("#waTraceMonto").textContent =
+    moneda(montoTotal);
+
+  $("#waTraceFinalizadas").textContent =
+    finalizadas.length;
+
+  $("#waTraceProceso").textContent =
+    solicitudes.length - finalizadas.length;
+
+  $("#waTraceTiempo").textContent =
+    calcularPromedioFinalizacionWhatsapp(
+      finalizadas
+    );
+
+}
+
+function obtenerFechaWhatsapp(valor) {
+
+  if (!valor) return null;
+
+  if (valor?.toDate) {
+    return valor.toDate();
+  }
+
+  const fecha = new Date(valor);
+
+  return Number.isNaN(fecha.getTime())
+    ? null
+    : fecha;
+}
+
+
+function formatearFechaTrazabilidad(valor) {
+
+  const fecha =
+    obtenerFechaWhatsapp(valor);
+
+  if (!fecha) return "—";
+
+  return fecha.toLocaleString(
+    "es-MX",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    }
+  );
+
+}
+
+
+function calcularTiempoTotalWhatsapp(item) {
+
+  const inicio =
+    obtenerFechaWhatsapp(
+      item.fechaCreacion
+    );
+
+  const fin =
+    obtenerFechaWhatsapp(
+      item.fechaFinalizado
+    );
+
+  if (!inicio || !fin) {
+    return "En proceso";
+  }
+
+  return formatearDuracionWhatsapp(
+    fin - inicio
+  );
+
+}
+
+
+function formatearDuracionWhatsapp(ms) {
+
+  if (
+    !Number.isFinite(ms) ||
+    ms < 0
+  ) {
+    return "—";
+  }
+
+  const minutos =
+    Math.floor(ms / 60000);
+
+  const horas =
+    Math.floor(minutos / 60);
+
+  const minutosRestantes =
+    minutos % 60;
+
+  if (!horas) {
+    return `${minutosRestantes} min`;
+  }
+
+  return `${horas} h ${minutosRestantes} min`;
+}
+
+
+function calcularPromedioFinalizacionWhatsapp(
+  solicitudes
+) {
+
+  const tiempos =
+    solicitudes
+      .map(item => {
+
+        const inicio =
+          obtenerFechaWhatsapp(
+            item.fechaCreacion
+          );
+
+        const fin =
+          obtenerFechaWhatsapp(
+            item.fechaFinalizado
+          );
+
+        if (!inicio || !fin) {
+          return null;
+        }
+
+        return fin - inicio;
+
+      })
+      .filter(
+        tiempo =>
+          Number.isFinite(tiempo) &&
+          tiempo >= 0
+      );
+
+
+  if (!tiempos.length) {
+    return "—";
+  }
+
+
+  const promedio =
+    tiempos.reduce(
+      (total, tiempo) =>
+        total + tiempo,
+      0
+    ) / tiempos.length;
+
+
+  return formatearDuracionWhatsapp(
+    promedio
+  );
+
+}
+
+function obtenerSolicitudesFiltradasTrazabilidadWhatsapp() {
+
+  const desde =
+    $("#waTraceDesde")?.value || "";
+
+  const hasta =
+    $("#waTraceHasta")?.value || "";
+
+  const vendedor =
+    $("#waTraceVendedor")?.value || "todos";
+
+  const ubicacion =
+    $("#waTraceUbicacion")?.value || "todos";
+
+  const estado =
+    $("#waTraceEstado")?.value || "todos";
+
+
+  return solicitudesWhatsapp.filter(item => {
+
+    const fecha =
+      obtenerFechaWhatsapp(item.fechaCreacion);
+
+    if (
+      desde &&
+      fecha &&
+      fecha < new Date(`${desde}T00:00:00`)
+    ) {
+      return false;
+    }
+
+    if (
+      hasta &&
+      fecha &&
+      fecha > new Date(`${hasta}T23:59:59`)
+    ) {
+      return false;
+    }
+
+    if (
+      vendedor !== "todos" &&
+      item.vendedor !== vendedor
+    ) {
+      return false;
+    }
+
+    if (
+      ubicacion !== "todos" &&
+      item.ubicacion !== ubicacion
+    ) {
+      return false;
+    }
+
+    if (
+      estado !== "todos" &&
+      item.estado !== estado
+    ) {
+      return false;
+    }
+
+    return true;
+
+  });
+
+}
+
+function normalizarTelefonoWhatsapp(telefono = "") {
+
+  let numero = String(telefono)
+    .replace(/\D/g, "");
+
+  // Si ya viene como 521... o 52...
+  if (numero.startsWith("52")) {
+    return numero;
+  }
+
+  // Número mexicano de 10 dígitos
+  if (numero.length === 10) {
+    return `52${numero}`;
+  }
+
+  return numero;
+}
+
+async function abrirWhatsappCliente(id) {
+
+  const solicitud = solicitudesWhatsapp.find(
+    item => item.id === id
+  );
+
+  if (!solicitud) {
+    alert("No se encontró la solicitud.");
+    return;
+  }
+
+  if (solicitudWhatsappEstaCancelada(solicitud)) {
+    alert("Esta solicitud está cancelada. No se enviarán mensajes operativos.");
+    return;
+  }
+
+  const telefono =
+    normalizarTelefonoWhatsapp(
+      solicitud.telefono
+    );
+
+  if (!telefono) {
+    alert(
+      "Esta solicitud no tiene teléfono registrado."
+    );
+    return;
+  }
+
+
+let mensaje = "";
+
+switch (solicitud.estado) {
+
+  case "confirmar":
+
+    mensaje = `
+Hola ${solicitud.cliente || ""} 👋
+
+Te contactamos de Noventia para confirmar tu solicitud.
+
+Referencia: ${solicitud.referencia || ""}
+Productos:
+${productosWhatsappMensaje(solicitud)}
+Monto: ${moneda(solicitud.monto || 0)}
+
+¿Nos confirmas si deseas continuar con tu pedido?
+    `.trim();
+
+    break;
+
+
+  case "pendiente_preparacion":
+
+    mensaje = `
+Hola ${solicitud.cliente || ""} 👋
+
+Tu pedido ya fue confirmado y se encuentra pendiente de preparación.
+
+Referencia: ${solicitud.referencia || ""}
+Productos:
+${productosWhatsappMensaje(solicitud)}
+Ubicación: ${solicitud.ubicacion || "-"}
+
+Te avisaremos cuando esté preparado.
+    `.trim();
+
+    break;
+
+
+  case "preparado":
+
+    mensaje = `
+Hola ${solicitud.cliente || ""} 👋
+
+Tu pedido ya fue preparado correctamente.
+
+Referencia: ${solicitud.referencia || ""}
+Productos:
+${productosWhatsappMensaje(solicitud)}
+Monto: ${moneda(solicitud.monto || 0)}
+
+En breve te confirmaremos cuando esté listo para entrega.
+    `.trim();
+
+    break;
+
+
+  case "listo":
+
+    mensaje = `
+Hola ${solicitud.cliente || ""} 👋
+
+¡Tu pedido ya está listo!
+
+Referencia: ${solicitud.referencia || ""}
+Productos:
+${productosWhatsappMensaje(solicitud)}
+Ubicación de entrega: ${solicitud.ubicacion || "-"}
+
+Quedamos atentos para coordinar tu entrega.
+    `.trim();
+
+    break;
+
+
+  case "finalizado":
+
+    mensaje = `
+Hola ${solicitud.cliente || ""} 👋
+
+Gracias por tu compra en Noventia.
+
+Tu pedido ${solicitud.referencia || ""} ha sido finalizado correctamente.
+
+Esperamos que disfrutes tu compra y será un gusto volver a atenderte.
+    `.trim();
+
+    break;
+
+
+  default:
+
+    mensaje = `
+Hola ${solicitud.cliente || ""} 👋
+
+Te contactamos de Noventia para dar seguimiento a tu solicitud.
+
+Referencia: ${solicitud.referencia || ""}
+    `.trim();
+
+}
+
+
+
+
+const url =
+  `https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`;
+
+try {
+
+  await updateDoc(
+    doc(
+      db,
+      "solicitudes_whatsapp",
+      id
+    ),
+    {
+      ultimaComunicacion:
+        serverTimestamp(),
+
+      ultimaActualizacion:
+        serverTimestamp(),
+
+      historial:
+        arrayUnion({
+
+          tipo:
+            "CONTACTO_WHATSAPP",
+
+          estado:
+            solicitud.estado,
+
+          usuarioUid:
+            usuarioActual?.uid || "",
+
+          usuarioNombre:
+            perfilActual?.nombre ||
+            usuarioActual?.email ||
+            "Usuario",
+
+          fechaISO:
+            new Date().toISOString()
+
+        })
+    }
+  );
+
+} catch (error) {
+
+  console.error(
+    "No se pudo registrar el contacto por WhatsApp:",
+    error
+  );
+
+}
+
+window.open(
+  url,
+  "_blank",
+  "noopener,noreferrer"
+);
+
+}
+
+function exportarTrazabilidadWhatsapp() {
+
+  const solicitudes =
+    obtenerSolicitudesFiltradasTrazabilidadWhatsapp();
+
+  if (!solicitudes.length) {
+    alert(
+      "No hay solicitudes para exportar con los filtros seleccionados."
+    );
+    return;
+  }
+
+  const desde = $("#waTraceDesde")?.value || "";
+  const hasta = $("#waTraceHasta")?.value || "";
+  const filasTrazabilidad = solicitudes.map(item => ({
+      Referencia:
+        item.referencia || "",
+      Cliente:
+        item.cliente || "",
+      Teléfono:
+        item.telefono || "",
+      Productos:
+        resumenProductosWhatsappTexto(item),
+      Monto:
+        Number(item.monto || 0),
+      Ubicación:
+        item.ubicacion || "",
+      Grupo:
+        item.grupo || "",
+      Vendedor:
+        item.vendedor || "",
+      "Responsable preparación":
+        item.responsablePreparacion || "",
+      Estado:
+        ESTADOS_WHATSAPP_LABELS[item.estado] ||
+        item.estado ||
+        "",
+      "Fecha creación":
+        formatearFechaTrazabilidad(
+          item.fechaCreacion
+        ),
+      "Fecha confirmación":
+        formatearFechaTrazabilidad(
+          item.fechaConfirmacion
+        ),
+      "Toma preparación":
+        formatearFechaTrazabilidad(
+          item.fechaTomaPreparacion
+        ),
+      Preparado:
+        formatearFechaTrazabilidad(
+          item.fechaPreparado
+        ),
+      Listo:
+        formatearFechaTrazabilidad(
+          item.fechaListo
+        ),
+      Finalizado:
+        formatearFechaTrazabilidad(
+          item.fechaFinalizado
+        ),
+      "Tiempo total":
+        calcularTiempoTotalWhatsapp(item)
+    }));
+
+  const montoTotal = solicitudes.reduce( (total, item) => total + Number(item.monto || 0),0);
+  const finalizadas = solicitudes.filter(item => item.estado === "finalizado");
+
+  const resumen = [
+    {
+      Concepto:
+        "Periodo inicial",
+      Valor:
+        desde || "Sin filtro"
+    },
+    {
+      Concepto:
+        "Periodo final",
+      Valor:
+        hasta || "Sin filtro"
+    },
+    {
+      Concepto:
+        "Solicitudes",
+      Valor:
+        solicitudes.length
+    },
+    {
+      Concepto:
+        "Monto total",
+      Valor:
+        montoTotal
+    },
+    {
+      Concepto:
+        "Finalizadas",
+      Valor:
+        finalizadas.length
+    },
+    {
+      Concepto:
+        "En proceso",
+      Valor:
+        solicitudes.length -
+        finalizadas.length
+    },
+    {
+      Concepto:
+        "Tiempo promedio",
+      Valor:
+        calcularPromedioFinalizacionWhatsapp(
+          finalizadas
+       )
+    }
+  ];
+
+  const libro = XLSX.utils.book_new();
+  const hojaResumen = XLSX.utils.json_to_sheet(resumen);
+  const hojaTrazabilidad = XLSX.utils.json_to_sheet(filasTrazabilidad);
+  XLSX.utils.book_append_sheet(libro,hojaResumen,"Resumen");
+  XLSX.utils.book_append_sheet(libro,hojaTrazabilidad,"Trazabilidad");
+  const nombreArchivo = `Trazabilidad_WhatsApp_${desde || "inicio"}_${hasta || "hoy"}.xlsx`;
+  XLSX.writeFile(libro,nombreArchivo);
+  console.log(
+  "ENTRANDO A EXPORTAR",
+  solicitudesWhatsapp
+);
+
+}
+
+function actualizarFiltrosTrazabilidadWhatsapp() {
+
+  const selectVendedor = $("#waTraceVendedor");
+  const selectUbicacion = $("#waTraceUbicacion");
+
+  if (!selectVendedor || !selectUbicacion) return;
+
+
+  const vendedorSeleccionado =
+    selectVendedor.value;
+
+  const ubicacionSeleccionada =
+    selectUbicacion.value;
+
+
+  const vendedores = [
+    ...new Set(
+      solicitudesWhatsapp
+        .map(item => item.vendedor)
+        .filter(Boolean)
+    )
+  ].sort();
+
+
+  const ubicaciones = [
+    ...new Set(
+      solicitudesWhatsapp
+        .map(item => item.ubicacion)
+        .filter(Boolean)
+    )
+  ].sort();
+
+
+  selectVendedor.innerHTML = `
+    <option value="todos">Todos</option>
+
+    ${vendedores.map(vendedor => `
+      <option value="${escapeHtml(vendedor)}">
+        ${escapeHtml(vendedor)}
+      </option>
+    `).join("")}
+  `;
+
+
+  selectUbicacion.innerHTML = `
+    <option value="todos">Todas</option>
+
+    ${ubicaciones.map(ubicacion => `
+      <option value="${escapeHtml(ubicacion)}">
+        ${escapeHtml(ubicacion)}
+      </option>
+    `).join("")}
+  `;
+
+
+  if (vendedores.includes(vendedorSeleccionado)) {
+    selectVendedor.value = vendedorSeleccionado;
+  }
+
+
+  if (ubicaciones.includes(ubicacionSeleccionada)) {
+    selectUbicacion.value = ubicacionSeleccionada;
+  }
+
+}
+
+function obtenerAlertaTiempoWhatsapp(item) {
+
+  if (!item || item.estado === "finalizado") {
+    return null;
+  }
+
+  let fechaInicio = null;
+  let advertencia = 0;
+  let critico = 0;
+
+
+  switch (item.estado) {
+
+    case "confirmar":
+
+      fechaInicio =
+        obtenerFechaWhatsapp(item.fechaCreacion);
+
+      advertencia = 10;
+      critico = 20;
+
+      break;
+
+
+    case "pendiente_preparacion":
+
+      fechaInicio =
+        obtenerFechaWhatsapp(item.fechaConfirmacion);
+
+      advertencia = 20;
+      critico = 40;
+
+      break;
+
+
+    case "preparado":
+
+      fechaInicio =
+        obtenerFechaWhatsapp(item.fechaPreparado);
+
+      advertencia = 20;
+      critico = 40;
+
+      break;
+
+
+    case "listo":
+
+      fechaInicio =
+        obtenerFechaWhatsapp(item.fechaListo);
+
+      advertencia = 30;
+      critico = 60;
+
+      break;
+
+
+    default:
+      return null;
+
+  }
+
+
+  if (!fechaInicio) {
+    return null;
+  }
+
+
+  const minutos =
+    Math.floor(
+      (Date.now() - fechaInicio.getTime()) / 60000
+    );
+
+
+  if (minutos >= critico) {
+
+    return {
+      nivel: "critico",
+      minutos
+    };
+
+  }
+
+
+  if (minutos >= advertencia) {
+
+    return {
+      nivel: "advertencia",
+      minutos
+    };
+
+  }
+
+
+  return {
+    nivel: "normal",
+    minutos
+  };
+
+}
+
+function obtenerTextoTiempoWhatsapp(minutos) {
+
+  if (minutos < 60) {
+    return `${minutos} min`;
+  }
+
+  const horas =
+    Math.floor(minutos / 60);
+
+  const restantes =
+    minutos % 60;
+
+  return `${horas} h ${restantes} min`;
+}
+
+function renderKanbanWhatsapp() {
+
+  const columnas = {
+    confirmar: $("#waColumnConfirmar"),
+    pendiente_preparacion: $("#waColumnPendiente"),
+    preparado: $("#waColumnPreparado"),
+    listo: $("#waColumnListo"),
+    finalizado: $("#waColumnFinalizado")
+  };
+
+  Object.values(columnas).forEach(columna => {
+    if (columna) columna.innerHTML = "";
+  });
+
+  const search =
+    $("#waSearch")?.value
+      ?.trim()
+      .toLowerCase() || "";
+
+const solicitudesFiltradas =
+  solicitudesWhatsapp.filter(item => {
+
+    // Los cancelados no pertenecen al flujo Kanban.
+if (
+  normalizarEstadoWhatsapp(item.estado) ===
+  "cancelado"
+) {
+  return false;
+}
+
+    const coincideBusqueda =
+      !search ||
+      item.cliente
+        ?.toLowerCase()
+        .includes(search) ||
+      item.telefono
+        ?.includes(search) ||
+      item.referencia
+        ?.toLowerCase()
+        .includes(search) ||
+      resumenProductosWhatsappTexto(item)
+        .toLowerCase()
+        .includes(search);
+
+    return coincideBusqueda;
+
+  });
+
+  solicitudesFiltradas.forEach(item => {
+
+    const estadoNormalizado =
+  normalizarEstadoWhatsapp(item.estado);
+
+const columna =
+  columnas[estadoNormalizado];
+
+if (!columna) {
+
+  console.warn(
+    "Solicitud WhatsApp con estado no reconocido:",
+    {
+      id: item.id,
+      referencia: item.referencia,
+      cliente: item.cliente,
+      estado: item.estado
+    }
+  );
+
+  return;
+}
+
+    columna.insertAdjacentHTML(
+      "beforeend",
+      renderTarjetaKanbanWhatsapp(item)
+    );
+
+  });
+
+  actualizarContadoresKanbanWhatsapp();
+  configurarInteraccionesKanbanWhatsapp();
+
+}
+
+function normalizarEstadoWhatsapp(estado = "") {
+
+  const valor = String(estado)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "_");
+
+  // Compatibilidad con solicitudes antiguas sin estado.
+  // Se muestran en "Confirmar pedido" para que no desaparezcan del Kanban.
+  if (!valor) return "confirmar";
+
+
+  const equivalencias = {
+
+    confirmar:
+      "confirmar",
+
+    confirmar_pedido:
+      "confirmar",
+
+    pendiente:
+      "pendiente_preparacion",
+
+    pendiente_preparacion:
+      "pendiente_preparacion",
+
+    pendiente_de_preparacion:
+      "pendiente_preparacion",
+
+    preparado:
+      "preparado",
+
+    listo:
+      "listo",
+
+    finalizado:
+      "finalizado",
+
+    cancelado:
+      "cancelado"
+
+  };
+
+
+  return equivalencias[valor] || valor;
+}
+
+function solicitudWhatsappEstaCancelada(solicitud) {
+  return normalizarEstadoWhatsapp(solicitud?.estado) === "cancelado";
+}
+
+function esAdministradorWhatsapp() {
+  return String(perfilActual?.rol || "").toLowerCase() === "admin";
+}
+
+function obtenerProductosWhatsapp(solicitud = {}) {
+  if (
+    Array.isArray(solicitud.productos) &&
+    solicitud.productos.length
+  ) {
+    return solicitud.productos.map(producto => ({
+      idLinea:
+        producto.idLinea ||
+        crypto.randomUUID(),
+
+      clave:
+        String(
+          producto.idProducto ||
+          producto.clave ||
+          ""
+        ).trim(),
+
+      idProducto:
+        String(
+          producto.idProducto ||
+          producto.clave ||
+          ""
+        ).trim(),
+
+      nombre:
+        String(
+          producto.nombre ||
+          producto.producto ||
+          ""
+        ).trim(),
+
+      precio:
+        Number(
+          producto.precio ??
+          producto.costo ??
+          0
+        ),
+
+      cantidad:
+        Math.max(
+          1,
+          Number(producto.cantidad || 1)
+        )
+    }));
+  }
+
+  const nombre =
+    String(
+      solicitud.producto || ""
+    ).trim();
+
+  if (!nombre) return [];
+
+  return [{
+    idLinea:
+      crypto.randomUUID(),
+
+    clave: "",
+
+    nombre,
+
+    precio:
+      Number(
+        solicitud.monto ??
+        solicitud.precio ??
+        0
+      ),
+
+    cantidad: 1
+  }];
+}
+
+function calcularTotalProductosWhatsapp(productos = []) {
+  return productos.reduce(
+    (total, producto) =>
+      total +
+      Number(producto.precio || 0) *
+      Number(producto.cantidad || 0),
+    0
+  );
+}
+
+function resumenProductosWhatsappTexto(solicitud = {}) {
+  const productos =
+    obtenerProductosWhatsapp(solicitud);
+
+  if (!productos.length) {
+    return solicitud.producto || "Sin productos";
+  }
+
+  return productos
+    .map(producto =>
+      `${Number(producto.cantidad || 1)} × ${producto.nombre || "Producto"}`
+    )
+    .join(" · ");
+}
+
+function productosWhatsappMensaje(solicitud = {}) {
+  const productos =
+    obtenerProductosWhatsapp(solicitud);
+
+  if (!productos.length) {
+    return solicitud.producto || "Sin productos";
+  }
+
+  return productos
+    .map(producto =>
+      `• ${Number(producto.cantidad || 1)} × ${producto.nombre || "Producto"} — ${moneda(
+        Number(producto.precio || 0) *
+        Number(producto.cantidad || 1)
+      )}`
+    )
+    .join("\n");
+}
+
+function resumenProductoLegacyWhatsapp(productos = []) {
+  if (!productos.length) return "";
+
+  if (productos.length === 1) {
+    return productos[0].nombre || "";
+  }
+
+  return `${productos[0].nombre || "Producto"} + ${productos.length - 1} más`;
+}
+
+
+function mostrarMensajeProductoWhatsapp(
+  campoId,
+  texto = "",
+  tipo = ""
+) {
+  const campo = $(campoId);
+  if (!campo) return;
+
+  let mensaje =
+    campo
+      .closest("label")
+      ?.querySelector(".product-message");
+
+  if (!mensaje) {
+    mensaje =
+      document.createElement("small");
+
+    mensaje.className = "product-message";
+
+    campo
+      .closest("label")
+      ?.appendChild(mensaje);
+  }
+
+  if (!mensaje) return;
+
+  mensaje.textContent = texto;
+  mensaje.className =
+    `product-message ${tipo}`.trim();
+}
+
+function buscarProductoCatalogoWhatsapp({
+  edicion = false,
+  enfocarSiguiente = false
+} = {}) {
+  const idCampo =
+    edicion
+      ? "#waEditarProductoId"
+      : "#waIdProducto";
+
+  const nombreCampo =
+    edicion
+      ? "#waEditarProductoNombre"
+      : "#waProducto";
+
+  const precioCampo =
+    edicion
+      ? "#waEditarProductoPrecio"
+      : "#waPrecio";
+
+  const cantidadCampo =
+    edicion
+      ? "#waEditarProductoCantidad"
+      : "#waCantidadProducto";
+
+  const clave =
+    limpiarClaveProducto(
+      $(idCampo)?.value
+    );
+
+  if (!clave) return null;
+
+  if (!catalogoCargado) {
+    mostrarMensajeProductoWhatsapp(
+      idCampo,
+      "Catálogo no disponible. Captura el producto manualmente.",
+      "warning"
+    );
+
+    return null;
+  }
+
+  const producto =
+    catalogoProductos.get(clave);
+
+  if (!producto) {
+    $(nombreCampo).value = "";
+    $(precioCampo).value = "";
+
+    mostrarMensajeProductoWhatsapp(
+      idCampo,
+      "ID no encontrado. Puedes capturar nombre y precio manualmente.",
+      "not-found"
+    );
+
+    $(nombreCampo)?.focus();
+
+    return null;
+  }
+
+  $(nombreCampo).value =
+    producto.nombre || "";
+
+  $(precioCampo).value =
+    producto.costo || "";
+
+  $(cantidadCampo).value = "1";
+
+  mostrarMensajeProductoWhatsapp(
+    idCampo,
+    `Producto encontrado: ${producto.nombre}`,
+    "found"
+  );
+
+  if (enfocarSiguiente) {
+    if (!producto.costo) {
+      $(precioCampo)?.focus();
+    } else {
+      $(cantidadCampo)?.focus();
+      $(cantidadCampo)?.select();
+    }
+  }
+
+  return producto;
+}
+
+function validarCapturaWhatsapp({
+  idProducto,
+  nombre,
+  precio,
+  cantidad
+}) {
+  if (!idProducto) {
+    alert("Ingresa el ID del producto.");
+    return false;
+  }
+
+  if (!nombre) {
+    alert(
+      "El producto actual no tiene nombre. Completa el nombre antes de escanear otro."
+    );
+    return false;
+  }
+
+  if (
+    !Number.isFinite(precio) ||
+    precio <= 0
+  ) {
+    alert(
+      "El producto actual no tiene un precio válido. Captura el precio antes de escanear otro."
+    );
+    return false;
+  }
+
+  if (
+    !Number.isInteger(cantidad) ||
+    cantidad < 1
+  ) {
+    alert(
+      "El producto actual no tiene una cantidad válida. La cantidad mínima es 1."
+    );
+    return false;
+  }
+
+  return true;
+}
+
+function prepararNuevoProductoEscaneadoWhatsapp({
+  nuevaClave,
+  edicion = false
+}) {
+  const claveNueva =
+    limpiarClaveProducto(nuevaClave);
+
+  if (!claveNueva) return false;
+
+  const estadoActual =
+    edicion
+      ? waProductoEdicionCapturaActualId
+      : waProductoCapturaActualId;
+
+  const idCampo =
+    edicion
+      ? "#waEditarProductoId"
+      : "#waIdProducto";
+
+  const nombreCampo =
+    edicion
+      ? "#waEditarProductoNombre"
+      : "#waProducto";
+
+  const precioCampo =
+    edicion
+      ? "#waEditarProductoPrecio"
+      : "#waPrecio";
+
+  const cantidadCampo =
+    edicion
+      ? "#waEditarProductoCantidad"
+      : "#waCantidadProducto";
+
+  if (estadoActual) {
+    const datos = {
+      idProducto: estadoActual,
+      nombre:
+        $(nombreCampo)?.value.trim() || "",
+      precio:
+        Number($(precioCampo)?.value || 0),
+      cantidad:
+        Number($(cantidadCampo)?.value || 0)
+    };
+
+    if (!validarCapturaWhatsapp(datos)) {
+      $(idCampo).value = estadoActual;
+      return false;
+    }
+
+    const agregado =
+      edicion
+        ? agregarProductoWhatsappEdicion({
+            idForzado: estadoActual,
+            limpiar: false
+          })
+        : agregarProductoWhatsappNueva({
+            idForzado: estadoActual,
+            limpiar: false
+          });
+
+    if (!agregado) {
+      $(idCampo).value = estadoActual;
+      return false;
+    }
+  }
+
+  $(idCampo).value = claveNueva;
+  $(nombreCampo).value = "";
+  $(precioCampo).value = "";
+  $(cantidadCampo).value = "1";
+
+  if (edicion) {
+    waProductoEdicionCapturaActualId =
+      claveNueva;
+  } else {
+    waProductoCapturaActualId =
+      claveNueva;
+  }
+
+  buscarProductoCatalogoWhatsapp({
+    edicion,
+    enfocarSiguiente: true
+  });
+
+  return true;
+}
+
+function manejarEscaneoWhatsapp(
+  event,
+  { edicion = false } = {}
+) {
+  if (event.key !== "Enter") return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const campo =
+    edicion
+      ? $("#waEditarProductoId")
+      : $("#waIdProducto");
+
+  prepararNuevoProductoEscaneadoWhatsapp({
+    nuevaClave: campo?.value || "",
+    edicion
+  });
+}
+
+function renderProductosWhatsappNueva() {
+  const contenedor = $("#waProductosAgregados");
+  const total = $("#waProductosTotal");
+
+  if (contenedor) {
+    contenedor.innerHTML =
+      productosWhatsappNueva.length
+        ? productosWhatsappNueva
+            .map(producto => {
+              const editando =
+                waProductoNuevoEditandoId ===
+                producto.idLinea;
+
+              if (editando) {
+                return `
+                  <div class="product-row wa-product-row product-row-editing">
+                    <label>
+                      ID
+                      <input
+                        data-wa-inline-id
+                        type="text"
+                        value="${escapeHtml(producto.idProducto || producto.clave || "")}"
+                      >
+                    </label>
+
+                    <label class="grow">
+                      Producto
+                      <input
+                        data-wa-inline-nombre
+                        type="text"
+                        value="${escapeHtml(producto.nombre || "")}"
+                      >
+                    </label>
+
+                    <label>
+                      Precio
+                      <input
+                        data-wa-inline-precio
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value="${Number(producto.precio || 0)}"
+                      >
+                    </label>
+
+                    <label>
+                      Cantidad
+                      <input
+                        data-wa-inline-cantidad
+                        type="number"
+                        min="1"
+                        step="1"
+                        value="${Number(producto.cantidad || 1)}"
+                      >
+                    </label>
+
+                    <div class="product-edit-actions">
+                      <button
+                        type="button"
+                        class="secondary"
+                        data-wa-guardar-inline="${escapeHtml(producto.idLinea)}"
+                      >
+                        Guardar
+                      </button>
+
+                      <button
+                        type="button"
+                        class="ghost"
+                        data-wa-cancelar-inline
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }
+
+              return `
+                <div class="product-row wa-product-row">
+                  <div>
+                    <strong>${escapeHtml(producto.nombre)}</strong>
+                    <small>
+                      ID: ${escapeHtml(producto.idProducto || producto.clave || "Sin ID")}
+                    </small>
+                  </div>
+
+                  <span>${Number(producto.cantidad)} pza.</span>
+                  <span>${moneda(producto.precio)}</span>
+
+                  <strong>
+                    ${moneda(
+                      Number(producto.cantidad) *
+                      Number(producto.precio)
+                    )}
+                  </strong>
+
+                  <div class="product-row-actions">
+                    <button
+                      type="button"
+                      class="secondary"
+                      data-wa-editar-inline="${escapeHtml(producto.idLinea)}"
+                    >
+                      Editar
+                    </button>
+
+                    <button
+                      type="button"
+                      class="ghost wa-remove-product"
+                      data-wa-quitar-producto="${escapeHtml(producto.idLinea)}"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              `;
+            })
+            .join("")
+        : `<div class="empty wa-products-empty">Aún no agregas productos.</div>`;
+  }
+
+  if (total) {
+    total.textContent =
+      moneda(
+        calcularTotalProductosWhatsapp(
+          productosWhatsappNueva
+        )
+      );
+  }
+}
+
+
+function llenarPuntosEntregaWhatsapp(select) {
+  if (!select || select.dataset.cargado === "1") return;
+
+  const selectOriginal = $("#puntoEntrega");
+
+  if (selectOriginal?.options?.length) {
+    select.innerHTML = Array.from(selectOriginal.options)
+      .map(option => `
+        <option
+          value="${escapeHtml(option.value)}"
+          ${option.disabled ? "disabled" : ""}
+        >
+          ${escapeHtml(option.textContent)}
+        </option>
+      `)
+      .join("");
+  } else {
+    select.innerHTML = `
+      <option value="">Selecciona un punto de entrega</option>
+    `;
+  }
+
+  select.dataset.cargado = "1";
+}
+
+function actualizarCamposEntregaSolicitudWhatsapp(prefijo = "wa") {
+  const tipo = document.querySelector(
+    `input[name="${prefijo}TipoEntrega"]:checked`
+  )?.value || "";
+
+  const esPunto = tipo === "PUNTO_ENTREGA";
+  const esDomicilio = tipo === "DOMICILIO";
+
+  $(`#${prefijo}CampoPuntoEntrega`)
+    ?.classList.toggle("hidden", !esPunto);
+
+  $(`#${prefijo}CampoDomicilio`)
+    ?.classList.toggle("hidden", !esDomicilio);
+
+  const punto = $(`#${prefijo}PuntoEntrega`);
+  const domicilio = $(`#${prefijo}Ubicacion`);
+
+  if (punto) punto.required = esPunto;
+  if (domicilio) domicilio.required = esDomicilio;
+
+  if (!esPunto && punto) punto.value = "";
+  if (!esDomicilio && domicilio) domicilio.value = "";
+}
+
+
+function aplicarLayoutNuevaSolicitudWhatsapp() {
+  const modal = $("#modalWhatsappSolicitud");
+  if (!modal) return;
+
+  modal.classList.add("wide-dialog");
+
+  // "Grupo" ya no forma parte de Crear nueva solicitud.
+  // Se elimina únicamente de este modal; no afecta solicitudes anteriores.
+  const campoGrupo = $("#waGrupo");
+  const labelGrupo = campoGrupo?.closest("label");
+
+  if (labelGrupo) {
+    labelGrupo.remove();
+  }
+}
+
+function asegurarEntregaNuevaSolicitudWhatsapp() {
+  const modal = $("#modalWhatsappSolicitud");
+  if (!modal) return;
+
+  llenarPuntosEntregaWhatsapp($("#waPuntoEntrega"));
+
+  const bloque =
+    modal.querySelector(".delivery-choice");
+
+  if (
+    bloque &&
+    bloque.dataset.waListener !== "1"
+  ) {
+    bloque.dataset.waListener = "1";
+
+    bloque
+      .querySelectorAll('input[name="waTipoEntrega"]')
+      .forEach(control =>
+        control.addEventListener(
+          "change",
+          () =>
+            actualizarCamposEntregaSolicitudWhatsapp("wa")
+        )
+      );
+  }
+
+  actualizarCamposEntregaSolicitudWhatsapp("wa");
+}
+
+function asegurarProductosNuevaSolicitudWhatsapp() {
+  const modal = $("#modalWhatsappSolicitud");
+  if (!modal) return;
+
+  aplicarLayoutNuevaSolicitudWhatsapp();
+  asegurarEntregaNuevaSolicitudWhatsapp();
+
+  const boton = $("#btnAgregarProductoWhatsapp");
+
+  if (
+    boton &&
+    boton.dataset.waListener !== "1"
+  ) {
+    boton.dataset.waListener = "1";
+
+    boton.addEventListener(
+      "click",
+      agregarProductoWhatsappNueva
+    );
+  }
+
+  const campoId = $("#waIdProducto");
+
+  if (
+    campoId &&
+    campoId.dataset.waScanListener !== "1"
+  ) {
+    campoId.dataset.waScanListener = "1";
+
+    campoId.addEventListener(
+      "keydown",
+      event =>
+        manejarEscaneoWhatsapp(
+          event,
+          { edicion: false }
+        )
+    );
+
+    campoId.addEventListener(
+      "change",
+      () =>
+        buscarProductoCatalogoWhatsapp({
+          edicion: false
+        })
+    );
+  }
+
+  renderProductosWhatsappNueva();
+}
+
+function agregarProductoWhatsappNueva(
+  opciones = {}
+) {
+  const idForzado =
+    opciones &&
+    typeof opciones === "object" &&
+    "idForzado" in opciones
+      ? opciones.idForzado
+      : null;
+
+  const limpiar =
+    !(
+      opciones &&
+      typeof opciones === "object" &&
+      opciones.limpiar === false
+    );
+
+  const idProducto =
+    limpiarClaveProducto(
+      idForzado !== null
+        ? idForzado
+        : $("#waIdProducto")?.value
+    );
+
+  const nombre =
+    $("#waProducto")?.value.trim() || "";
+
+  const precio =
+    Number($("#waPrecio")?.value || 0);
+
+  const cantidad =
+    Number(
+      $("#waCantidadProducto")?.value || 1
+    );
+
+  if (
+    !validarCapturaWhatsapp({
+      idProducto,
+      nombre,
+      precio,
+      cantidad
+    })
+  ) {
+    return false;
+  }
+
+  const existente =
+    productosWhatsappNueva.find(producto =>
+      String(
+        producto.idProducto ||
+        producto.clave ||
+        ""
+      )
+        .trim()
+        .toLowerCase() ===
+        idProducto.toLowerCase() &&
+      Number(producto.precio) === precio
+    );
+
+  if (existente) {
+    existente.cantidad += cantidad;
+  } else {
+    productosWhatsappNueva.push({
+      idLinea: crypto.randomUUID(),
+      idProducto,
+      clave: idProducto,
+      nombre,
+      precio,
+      cantidad
+    });
+  }
+
+  if (limpiar) {
+    $("#waIdProducto").value = "";
+    $("#waProducto").value = "";
+    $("#waPrecio").value = "";
+    $("#waCantidadProducto").value = "1";
+
+    waProductoCapturaActualId = "";
+
+    $("#waIdProducto").focus();
+  }
+
+  renderProductosWhatsappNueva();
+
+  return true;
+}
+
+function renderProductosWhatsappEdicion() {
+  const contenedor =
+    $("#waEditarProductosAgregados");
+
+  const total =
+    $("#waEditarProductosTotal");
+
+  if (contenedor) {
+    contenedor.innerHTML =
+      productosWhatsappEdicion.length
+        ? productosWhatsappEdicion
+            .map(producto => {
+              const editando =
+                waProductoEdicionEditandoId ===
+                producto.idLinea;
+
+              if (editando) {
+                return `
+                  <div class="wa-product-line product-row-editing">
+                    <label>
+                      ID
+                      <input
+                        data-wa-edit-inline-id
+                        type="text"
+                        value="${escapeHtml(producto.idProducto || producto.clave || "")}"
+                      >
+                    </label>
+
+                    <label class="grow">
+                      Producto
+                      <input
+                        data-wa-edit-inline-nombre
+                        type="text"
+                        value="${escapeHtml(producto.nombre || "")}"
+                      >
+                    </label>
+
+                    <label>
+                      Precio
+                      <input
+                        data-wa-edit-inline-precio
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value="${Number(producto.precio || 0)}"
+                      >
+                    </label>
+
+                    <label>
+                      Cantidad
+                      <input
+                        data-wa-edit-inline-cantidad
+                        type="number"
+                        min="1"
+                        step="1"
+                        value="${Number(producto.cantidad || 1)}"
+                      >
+                    </label>
+
+                    <div class="product-edit-actions">
+                      <button
+                        type="button"
+                        class="secondary"
+                        data-wa-edit-guardar-inline="${escapeHtml(producto.idLinea)}"
+                      >
+                        Guardar
+                      </button>
+
+                      <button
+                        type="button"
+                        class="ghost"
+                        data-wa-edit-cancelar-inline
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }
+
+              return `
+                <div class="wa-product-line">
+                  <div>
+                    <strong>${escapeHtml(producto.nombre)}</strong>
+                    <small>
+                      ID: ${escapeHtml(producto.idProducto || producto.clave || "Sin ID")} ·
+                      ${Number(producto.cantidad)} × ${moneda(producto.precio)}
+                      = ${moneda(
+                        Number(producto.cantidad) *
+                        Number(producto.precio)
+                      )}
+                    </small>
+                  </div>
+
+                  <div class="product-row-actions">
+                    <button
+                      type="button"
+                      class="secondary"
+                      data-wa-edit-editar-inline="${escapeHtml(producto.idLinea)}"
+                    >
+                      Editar
+                    </button>
+
+                    <button
+                      type="button"
+                      data-wa-editar-quitar-producto="${escapeHtml(producto.idLinea)}"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              `;
+            })
+            .join("")
+        : `<div class="empty">Agrega al menos un producto.</div>`;
+  }
+
+  if (total) {
+    total.textContent =
+      moneda(
+        calcularTotalProductosWhatsapp(
+          productosWhatsappEdicion
+        )
+      );
+  }
+}
+
+function agregarProductoWhatsappEdicion(
+  opciones = {}
+) {
+  const idForzado =
+    opciones &&
+    typeof opciones === "object" &&
+    "idForzado" in opciones
+      ? opciones.idForzado
+      : null;
+
+  const limpiar =
+    !(
+      opciones &&
+      typeof opciones === "object" &&
+      opciones.limpiar === false
+    );
+
+  const idProducto =
+    limpiarClaveProducto(
+      idForzado !== null
+        ? idForzado
+        : $("#waEditarProductoId")?.value
+    );
+
+  const nombre =
+    $("#waEditarProductoNombre")
+      ?.value
+      .trim() || "";
+
+  const precio =
+    Number(
+      $("#waEditarProductoPrecio")
+        ?.value || 0
+    );
+
+  const cantidad =
+    Number(
+      $("#waEditarProductoCantidad")
+        ?.value || 1
+    );
+
+  if (
+    !validarCapturaWhatsapp({
+      idProducto,
+      nombre,
+      precio,
+      cantidad
+    })
+  ) {
+    return false;
+  }
+
+  const existente =
+    productosWhatsappEdicion.find(producto =>
+      String(
+        producto.idProducto ||
+        producto.clave ||
+        ""
+      )
+        .trim()
+        .toLowerCase() ===
+        idProducto.toLowerCase() &&
+      Number(producto.precio) === precio
+    );
+
+  if (existente) {
+    existente.cantidad += cantidad;
+  } else {
+    productosWhatsappEdicion.push({
+      idLinea: crypto.randomUUID(),
+      idProducto,
+      clave: idProducto,
+      nombre,
+      precio,
+      cantidad
+    });
+  }
+
+  if (limpiar) {
+    $("#waEditarProductoId").value = "";
+    $("#waEditarProductoNombre").value = "";
+    $("#waEditarProductoPrecio").value = "";
+    $("#waEditarProductoCantidad").value = "1";
+
+    waProductoEdicionCapturaActualId = "";
+  }
+
+  renderProductosWhatsappEdicion();
+
+  return true;
+}
+
+document.addEventListener(
+  "click",
+  event => {
+    const editarNueva =
+      event.target.closest(
+        "[data-wa-editar-inline]"
+      );
+
+    if (editarNueva) {
+      waProductoNuevoEditandoId =
+        editarNueva.dataset.waEditarInline;
+
+      renderProductosWhatsappNueva();
+      return;
+    }
+
+    const guardarNueva =
+      event.target.closest(
+        "[data-wa-guardar-inline]"
+      );
+
+    if (guardarNueva) {
+      const idLinea =
+        guardarNueva.dataset.waGuardarInline;
+
+      const producto =
+        productosWhatsappNueva.find(
+          item => item.idLinea === idLinea
+        );
+
+      const fila =
+        guardarNueva.closest(".product-row");
+
+      if (!producto || !fila) return;
+
+      const idProducto =
+        limpiarClaveProducto(
+          fila.querySelector("[data-wa-inline-id]")
+            ?.value
+        );
+
+      const nombre =
+        fila
+          .querySelector("[data-wa-inline-nombre]")
+          ?.value
+          .trim() || "";
+
+      const precio =
+        Number(
+          fila.querySelector("[data-wa-inline-precio]")
+            ?.value
+        );
+
+      const cantidad =
+        Number(
+          fila.querySelector("[data-wa-inline-cantidad]")
+            ?.value
+        );
+
+      if (
+        !validarCapturaWhatsapp({
+          idProducto,
+          nombre,
+          precio,
+          cantidad
+        })
+      ) {
+        return;
+      }
+
+      producto.idProducto = idProducto;
+      producto.clave = idProducto;
+      producto.nombre = nombre;
+      producto.precio = precio;
+      producto.cantidad = cantidad;
+
+      waProductoNuevoEditandoId = "";
+
+      renderProductosWhatsappNueva();
+      return;
+    }
+
+    if (
+      event.target.closest(
+        "[data-wa-cancelar-inline]"
+      )
+    ) {
+      waProductoNuevoEditandoId = "";
+      renderProductosWhatsappNueva();
+      return;
+    }
+
+    const editarEdicion =
+      event.target.closest(
+        "[data-wa-edit-editar-inline]"
+      );
+
+    if (editarEdicion) {
+      waProductoEdicionEditandoId =
+        editarEdicion.dataset.waEditEditarInline;
+
+      renderProductosWhatsappEdicion();
+      return;
+    }
+
+    const guardarEdicion =
+      event.target.closest(
+        "[data-wa-edit-guardar-inline]"
+      );
+
+    if (guardarEdicion) {
+      const idLinea =
+        guardarEdicion.dataset.waEditGuardarInline;
+
+      const producto =
+        productosWhatsappEdicion.find(
+          item => item.idLinea === idLinea
+        );
+
+      const fila =
+        guardarEdicion.closest(".wa-product-line");
+
+      if (!producto || !fila) return;
+
+      const idProducto =
+        limpiarClaveProducto(
+          fila.querySelector("[data-wa-edit-inline-id]")
+            ?.value
+        );
+
+      const nombre =
+        fila
+          .querySelector("[data-wa-edit-inline-nombre]")
+          ?.value
+          .trim() || "";
+
+      const precio =
+        Number(
+          fila.querySelector("[data-wa-edit-inline-precio]")
+            ?.value
+        );
+
+      const cantidad =
+        Number(
+          fila.querySelector("[data-wa-edit-inline-cantidad]")
+            ?.value
+        );
+
+      if (
+        !validarCapturaWhatsapp({
+          idProducto,
+          nombre,
+          precio,
+          cantidad
+        })
+      ) {
+        return;
+      }
+
+      producto.idProducto = idProducto;
+      producto.clave = idProducto;
+      producto.nombre = nombre;
+      producto.precio = precio;
+      producto.cantidad = cantidad;
+
+      waProductoEdicionEditandoId = "";
+
+      renderProductosWhatsappEdicion();
+      return;
+    }
+
+    if (
+      event.target.closest(
+        "[data-wa-edit-cancelar-inline]"
+      )
+    ) {
+      waProductoEdicionEditandoId = "";
+      renderProductosWhatsappEdicion();
+      return;
+    }
+
+    const quitarNueva =
+      event.target.closest(
+        "[data-wa-quitar-producto]"
+      );
+
+    if (quitarNueva) {
+      productosWhatsappNueva =
+        productosWhatsappNueva.filter(
+          producto =>
+            producto.idLinea !==
+            quitarNueva.dataset.waQuitarProducto
+        );
+
+      waProductoNuevoEditandoId = "";
+
+      renderProductosWhatsappNueva();
+      return;
+    }
+
+    const quitarEdicion =
+      event.target.closest(
+        "[data-wa-editar-quitar-producto]"
+      );
+
+    if (quitarEdicion) {
+      productosWhatsappEdicion =
+        productosWhatsappEdicion.filter(
+          producto =>
+            producto.idLinea !==
+            quitarEdicion.dataset.waEditarQuitarProducto
+        );
+
+      waProductoEdicionEditandoId = "";
+
+      renderProductosWhatsappEdicion();
+    }
+  }
+);
+
+function asegurarModalEditarSolicitudWhatsapp() {
+  let modal = $("#modalEditarSolicitudWhatsapp");
+  if (modal) return modal;
+
+  modal = document.createElement("dialog");
+  modal.id = "modalEditarSolicitudWhatsapp";
+  modal.className = "wide-dialog";
+
+  modal.innerHTML = `
+    <form id="formEditarSolicitudWhatsapp">
+      <div class="dialog-header">
+        <div>
+          <h3>Editar solicitud</h3>
+          <p id="waEditarReferencia"></p>
+        </div>
+
+        <button
+          type="button"
+          class="icon-button"
+          data-close="modalEditarSolicitudWhatsapp"
+          aria-label="Cerrar"
+        >
+          ×
+        </button>
+      </div>
+
+      <input type="hidden" id="waEditarSolicitudId">
+
+      <div class="form-grid">
+        <label>
+          Cliente
+          <input id="waEditarCliente" type="text" maxlength="120" required>
+        </label>
+
+        <label>
+          Teléfono
+          <input id="waEditarTelefono" type="text" maxlength="20">
+        </label>
+
+        <label>
+          Vendedor
+          <input id="waEditarVendedor" type="text" maxlength="120">
+        </label>
+
+        <label>
+          Responsable
+          <input id="waEditarResponsable" type="text" maxlength="120">
+        </label>
+      </div>
+
+      <fieldset class="delivery-choice wa-edit-delivery">
+        <legend>Tipo de entrega</legend>
+
+        <label class="inline-check">
+          <input
+            type="radio"
+            name="waEditarTipoEntrega"
+            value="PUNTO_ENTREGA"
+          >
+          <span>Recoger en punto de entrega</span>
+        </label>
+
+        <label class="inline-check">
+          <input
+            type="radio"
+            name="waEditarTipoEntrega"
+            value="DOMICILIO"
+          >
+          <span>Entrega a domicilio</span>
+        </label>
+      </fieldset>
+
+      <div
+        id="waEditarCampoPuntoEntrega"
+        class="hidden wa-delivery-field"
+      >
+        <label>
+          Punto de entrega
+          <select id="waEditarPuntoEntrega">
+            <option value="">Selecciona un punto de entrega</option>
+          </select>
+        </label>
+      </div>
+
+      <div
+        id="waEditarCampoDomicilio"
+        class="hidden wa-delivery-field"
+      >
+        <label>
+          Domicilio completo
+          <input
+            id="waEditarUbicacion"
+            type="text"
+            maxlength="260"
+            placeholder="Calle, número, colonia, municipio, estado, C.P. y referencias"
+          >
+        </label>
+      </div>
+
+      <section class="wa-modal-section wa-products-section">
+        <div class="wa-section-title">
+          <div>
+            <strong>Productos</strong>
+            <small>Agrega, quita o ajusta productos de la solicitud.</small>
+          </div>
+        </div>
+
+        <div class="product-entry wa-product-entry">
+          <label>
+            ID producto
+            <input
+              id="waEditarProductoId"
+              type="text"
+              maxlength="80"
+              placeholder="ID / clave"
+            >
+          </label>
+
+          <label class="grow">
+            Producto
+            <input
+              id="waEditarProductoNombre"
+              type="text"
+              maxlength="180"
+            >
+          </label>
+
+          <label>
+            Precio
+            <input
+              id="waEditarProductoPrecio"
+              type="number"
+              min="0.01"
+              step="0.01"
+            >
+          </label>
+
+          <label>
+            Cantidad
+            <input
+              id="waEditarProductoCantidad"
+              type="number"
+              min="1"
+              step="1"
+              value="1"
+            >
+          </label>
+
+          <button
+            type="button"
+            id="btnWaEditarAgregarProducto"
+            class="secondary"
+          >
+            + Agregar
+          </button>
+        </div>
+
+        <div
+          id="waEditarProductosAgregados"
+          class="product-list wa-product-list"
+        ></div>
+
+        <div class="order-total wa-order-total">
+          <span>Total</span>
+          <strong id="waEditarProductosTotal">$0.00</strong>
+        </div>
+      </section>
+
+      <div class="dialog-actions">
+        <button
+          type="button"
+          class="ghost"
+          data-close="modalEditarSolicitudWhatsapp"
+        >
+          Cancelar
+        </button>
+
+        <button type="submit" class="primary">
+          Guardar cambios
+        </button>
+      </div>
+    </form>
+  `;
+
+  document.body.appendChild(modal);
+
+  llenarPuntosEntregaWhatsapp($("#waEditarPuntoEntrega"));
+
+  modal.addEventListener("click", event => {
+    if (
+      event.target.closest(
+        '[data-close="modalEditarSolicitudWhatsapp"]'
+      )
+    ) {
+      modal.close();
+    }
+  });
+
+  modal
+    .querySelectorAll('input[name="waEditarTipoEntrega"]')
+    .forEach(control =>
+      control.addEventListener(
+        "change",
+        () =>
+          actualizarCamposEntregaSolicitudWhatsapp("waEditar")
+      )
+    );
+
+  $("#btnWaEditarAgregarProducto")?.addEventListener(
+    "click",
+    agregarProductoWhatsappEdicion
+  );
+
+  const campoProductoEditar =
+    $("#waEditarProductoId");
+
+  campoProductoEditar?.addEventListener(
+    "keydown",
+    event =>
+      manejarEscaneoWhatsapp(
+        event,
+        { edicion: true }
+      )
+  );
+
+  campoProductoEditar?.addEventListener(
+    "change",
+    () =>
+      buscarProductoCatalogoWhatsapp({
+        edicion: true
+      })
+  );
+
+  $("#formEditarSolicitudWhatsapp")?.addEventListener(
+    "submit",
+    guardarEdicionSolicitudWhatsapp
+  );
+
+  return modal;
+}
+
+function valorComparableWhatsapp(valor) {
+  if (
+    valor === null ||
+    valor === undefined
+  ) {
+    return "";
+  }
+
+  return String(valor).trim();
+}
+
+function construirCambiosSolicitudWhatsapp(
+  antes,
+  despues
+) {
+  const cambios = [];
+
+  const campos = [
+    ["cliente", "Cliente"],
+    ["telefono", "Teléfono"],
+    ["tipoEntrega", "Tipo de entrega"],
+    ["puntoEntrega", "Punto de entrega"],
+    ["ubicacion", "Ubicación"],
+    ["vendedor", "Vendedor"],
+    ["responsable", "Responsable"]
+  ];
+
+  campos.forEach(([campo, etiqueta]) => {
+    if (
+      valorComparableWhatsapp(antes[campo]) !==
+      valorComparableWhatsapp(despues[campo])
+    ) {
+      cambios.push(
+        `${etiqueta}: ${valorComparableWhatsapp(antes[campo]) || "—"} → ${valorComparableWhatsapp(despues[campo]) || "—"}`
+      );
+    }
+  });
+
+  const productosAntes =
+    JSON.stringify(
+      (antes.productos || []).map(producto => ({
+        nombre: producto.nombre,
+        precio: Number(producto.precio),
+        cantidad: Number(producto.cantidad)
+      }))
+    );
+
+  const productosDespues =
+    JSON.stringify(
+      (despues.productos || []).map(producto => ({
+        nombre: producto.nombre,
+        precio: Number(producto.precio),
+        cantidad: Number(producto.cantidad)
+      }))
+    );
+
+  if (productosAntes !== productosDespues) {
+    cambios.push(
+      `Productos: ${antes.productos.length} línea(s) → ${despues.productos.length} línea(s)`
+    );
+  }
+
+  if (
+    Number(antes.monto || 0) !==
+    Number(despues.monto || 0)
+  ) {
+    cambios.push(
+      `Monto: ${moneda(antes.monto || 0)} → ${moneda(despues.monto || 0)}`
+    );
+  }
+
+  return cambios;
+}
+
+function abrirEditarSolicitudWhatsapp(id) {
+  if (!esAdministradorWhatsapp()) {
+    alert(
+      "Solo el administrador puede editar solicitudes."
+    );
+    return;
+  }
+
+  const solicitud =
+    solicitudesWhatsapp.find(
+      item => item.id === id
+    );
+
+  if (!solicitud) {
+    alert("No se encontró la solicitud.");
+    return;
+  }
+
+  // Las solicitudes finalizadas solo pueden ser editadas
+  // por administrador. Esta función ya exige rol admin arriba.
+  if (
+    normalizarEstadoWhatsapp(
+      solicitud.estado
+    ) === "finalizado" &&
+    !esAdministradorWhatsapp()
+  ) {
+    alert(
+      "Una solicitud finalizada solo puede ser editada por un administrador."
+    );
+    return;
+  }
+
+  if (
+    solicitudWhatsappEstaCancelada(
+      solicitud
+    )
+  ) {
+    alert(
+      "Una solicitud cancelada ya no puede editarse."
+    );
+    return;
+  }
+
+  const modal =
+    asegurarModalEditarSolicitudWhatsapp();
+
+  waProductoEdicionCapturaActualId = "";
+  waProductoEdicionEditandoId = "";
+
+  productosWhatsappEdicion =
+    obtenerProductosWhatsapp(
+      solicitud
+    ).map(producto => ({
+      ...producto,
+      idLinea:
+        producto.idLinea ||
+        crypto.randomUUID()
+    }));
+
+  $("#waEditarSolicitudId").value =
+    solicitud.id;
+
+  $("#waEditarReferencia").textContent =
+    solicitud.referencia ||
+    "Sin referencia";
+
+  $("#waEditarCliente").value =
+    solicitud.cliente || "";
+
+  $("#waEditarTelefono").value =
+    solicitud.telefono || "";
+
+  const tipoEntrega =
+    solicitud.tipoEntrega ||
+    (solicitud.puntoEntrega
+      ? "PUNTO_ENTREGA"
+      : solicitud.ubicacion
+        ? "DOMICILIO"
+        : "");
+
+  const radioEntrega = document.querySelector(
+    `input[name="waEditarTipoEntrega"][value="${tipoEntrega}"]`
+  );
+
+  if (radioEntrega) radioEntrega.checked = true;
+
+  llenarPuntosEntregaWhatsapp($("#waEditarPuntoEntrega"));
+
+  $("#waEditarPuntoEntrega").value =
+    solicitud.puntoEntrega ||
+    (tipoEntrega === "PUNTO_ENTREGA"
+      ? solicitud.ubicacion || ""
+      : "");
+
+  $("#waEditarUbicacion").value =
+    tipoEntrega === "DOMICILIO"
+      ? solicitud.ubicacion || ""
+      : "";
+
+  actualizarCamposEntregaSolicitudWhatsapp("waEditar");
+
+  $("#waEditarVendedor").value =
+    solicitud.vendedor || "";
+
+  $("#waEditarResponsable").value =
+    solicitud.responsable ||
+    solicitud.responsablePreparacion ||
+    "";
+
+  $("#waEditarProductoNombre").value = "";
+  $("#waEditarProductoPrecio").value = "";
+  $("#waEditarProductoCantidad").value = "1";
+
+  renderProductosWhatsappEdicion();
+
+  modal.showModal();
+}
+
+async function guardarEdicionSolicitudWhatsapp(
+  event
+) {
+  event.preventDefault();
+
+  if (!esAdministradorWhatsapp()) {
+    alert(
+      "Solo el administrador puede editar solicitudes."
+    );
+    return;
+  }
+
+  const id =
+    $("#waEditarSolicitudId")?.value;
+
+  const solicitud =
+    solicitudesWhatsapp.find(
+      item => item.id === id
+    );
+
+  if (!solicitud) {
+    alert("No se encontró la solicitud.");
+    return;
+  }
+
+  if (
+    solicitudWhatsappEstaCancelada(
+      solicitud
+    )
+  ) {
+    alert(
+      "Una solicitud cancelada ya no puede editarse."
+    );
+    return;
+  }
+
+  const productoPendiente =
+    $("#waEditarProductoNombre")?.value.trim() ||
+    $("#waEditarProductoId")?.value.trim();
+
+  if (productoPendiente) {
+    const agregado =
+      agregarProductoWhatsappEdicion();
+
+    if (!agregado) return;
+  }
+
+  if (!productosWhatsappEdicion.length) {
+    alert(
+      "La solicitud debe tener al menos un producto."
+    );
+    return;
+  }
+
+  const monto =
+    calcularTotalProductosWhatsapp(
+      productosWhatsappEdicion
+    );
+
+  const despues = {
+    cliente:
+      $("#waEditarCliente").value.trim(),
+
+    telefono:
+      $("#waEditarTelefono").value.trim(),
+
+    tipoEntrega:
+      document.querySelector(
+        'input[name="waEditarTipoEntrega"]:checked'
+      )?.value || "",
+
+    puntoEntrega:
+      $("#waEditarPuntoEntrega")?.value || "",
+
+    ubicacion:
+      $("#waEditarUbicacion")?.value.trim() || "",
+
+    vendedor:
+      $("#waEditarVendedor").value.trim(),
+
+    responsable:
+      $("#waEditarResponsable").value.trim(),
+
+    productos:
+      productosWhatsappEdicion.map(
+        producto => ({
+          idLinea:
+            producto.idLinea ||
+            crypto.randomUUID(),
+
+          idProducto:
+            producto.idProducto ||
+            producto.clave ||
+            "",
+
+          clave:
+            producto.idProducto ||
+            producto.clave ||
+            "",
+
+          nombre:
+            producto.nombre.trim(),
+
+          precio:
+            Number(producto.precio),
+
+          cantidad:
+            Number(producto.cantidad)
+        })
+      ),
+
+    monto
+  };
+
+  if (!despues.tipoEntrega) {
+    alert("Selecciona el tipo de entrega.");
+    return;
+  }
+
+  if (
+    despues.tipoEntrega === "PUNTO_ENTREGA" &&
+    !despues.puntoEntrega
+  ) {
+    alert("Selecciona el punto de entrega.");
+    return;
+  }
+
+  if (
+    despues.tipoEntrega === "DOMICILIO" &&
+    !despues.ubicacion
+  ) {
+    alert("Escribe el domicilio completo.");
+    return;
+  }
+
+  if (despues.tipoEntrega === "PUNTO_ENTREGA") {
+    despues.ubicacion = despues.puntoEntrega;
+  } else {
+    despues.puntoEntrega = "";
+  }
+
+  if (!despues.cliente) {
+    alert("Cliente es obligatorio.");
+    return;
+  }
+
+  const antes = {
+    cliente:
+      solicitud.cliente || "",
+
+    telefono:
+      solicitud.telefono || "",
+
+    tipoEntrega:
+      solicitud.tipoEntrega ||
+      (solicitud.puntoEntrega
+        ? "PUNTO_ENTREGA"
+        : solicitud.ubicacion
+          ? "DOMICILIO"
+          : ""),
+
+    puntoEntrega:
+      solicitud.puntoEntrega || "",
+
+    ubicacion:
+      solicitud.ubicacion || "",
+
+    vendedor:
+      solicitud.vendedor || "",
+
+    responsable:
+      solicitud.responsable ||
+      solicitud.responsablePreparacion ||
+      "",
+
+    productos:
+      obtenerProductosWhatsapp(
+        solicitud
+      ),
+
+    monto:
+      Number(
+        solicitud.monto ??
+        calcularTotalProductosWhatsapp(
+          obtenerProductosWhatsapp(
+            solicitud
+          )
+        )
+      )
+  };
+
+  const cambios =
+    construirCambiosSolicitudWhatsapp(
+      antes,
+      despues
+    );
+
+  if (!cambios.length) {
+    alert("No hay cambios por guardar.");
+    return;
+  }
+
+  const usuarioNombre =
+    perfilActual?.nombre ||
+    usuarioActual?.email ||
+    "Administrador";
+
+  try {
+    await updateDoc(
+      doc(
+        db,
+        "solicitudes_whatsapp",
+        id
+      ),
+      {
+        cliente:
+          despues.cliente,
+
+        telefono:
+          despues.telefono,
+
+        productos:
+          despues.productos,
+
+        producto:
+          resumenProductoLegacyWhatsapp(
+            despues.productos
+          ),
+
+        monto:
+          despues.monto,
+
+        tipoEntrega:
+          despues.tipoEntrega,
+
+        puntoEntrega:
+          despues.puntoEntrega,
+
+        ubicacion:
+          despues.ubicacion,
+
+        vendedor:
+          despues.vendedor,
+
+        responsable:
+          despues.responsable,
+
+        responsablePreparacion:
+          despues.responsable,
+
+        ultimaActualizacion:
+          serverTimestamp(),
+
+        historial:
+          arrayUnion({
+            tipo:
+              "SOLICITUD_EDITADA",
+
+            detalle:
+              cambios.join(" | "),
+
+            usuarioUid:
+              usuarioActual?.uid || "",
+
+            usuarioNombre,
+
+            fechaISO:
+              new Date().toISOString()
+          })
+      }
+    );
+
+    $("#modalEditarSolicitudWhatsapp")
+      ?.close();
+
+  } catch (error) {
+    console.error(
+      "Error editando solicitud WhatsApp:",
+      error
+    );
+
+    alert(
+      "No se pudo guardar la edición."
+    );
+  }
+}
+
+document.addEventListener(
+  "click",
+  event => {
+    const boton =
+      event.target.closest(
+        "[data-wa-editar]"
+      );
+
+    if (!boton) return;
+
+    abrirEditarSolicitudWhatsapp(
+      boton.dataset.waEditar
+    );
+  }
+);
+
+function asegurarModalHistorialWhatsapp() {
+  let modal = $("#modalHistorialWhatsapp");
+
+  if (modal) return modal;
+
+  modal = document.createElement("dialog");
+  modal.id = "modalHistorialWhatsapp";
+  modal.className = "dialog";
+
+  modal.innerHTML = `
+    <div class="dialog-header">
+      <div>
+        <h3>Historial de solicitud</h3>
+        <p id="waHistorialReferencia"></p>
+      </div>
+
+      <button
+        type="button"
+        data-close="modalHistorialWhatsapp"
+        aria-label="Cerrar"
+      >
+        ×
+      </button>
+    </div>
+
+    <div id="waHistorialResumen"></div>
+    <div id="waHistorialContenido"></div>
+  `;
+
+  document.body.appendChild(modal);
+
+  modal.addEventListener("click", event => {
+    if (
+      event.target.closest(
+        '[data-close="modalHistorialWhatsapp"]'
+      )
+    ) {
+      modal.close();
+    }
+  });
+
+  return modal;
+}
+
+function fechaHistorialWhatsapp(valor) {
+  if (!valor) return "Sin fecha";
+
+  const fecha =
+    valor?.toDate
+      ? valor.toDate()
+      : new Date(valor);
+
+  if (Number.isNaN(fecha.getTime())) {
+    return "Sin fecha";
+  }
+
+  return fecha.toLocaleString(
+    "es-MX",
+    {
+      dateStyle: "medium",
+      timeStyle: "short"
+    }
+  );
+}
+
+function obtenerDetalleHistorialWhatsapp(evento = {}) {
+  const estadoAnterior =
+    ESTADOS_WHATSAPP_LABELS[
+      normalizarEstadoWhatsapp(evento.estadoAnterior)
+    ] || evento.estadoAnterior || "";
+
+  const estadoNuevo =
+    ESTADOS_WHATSAPP_LABELS[
+      normalizarEstadoWhatsapp(evento.estadoNuevo)
+    ] || evento.estadoNuevo || "";
+
+  switch (evento.tipo) {
+    case "CAMBIO_ESTADO":
+      return {
+        titulo: "Cambio de estado",
+        detalle:
+          estadoAnterior && estadoNuevo
+            ? `${estadoAnterior} → ${estadoNuevo}`
+            : estadoNuevo || "Estado actualizado"
+      };
+
+    case "SOLICITUD_TOMADA":
+      return {
+        titulo: "Solicitud tomada",
+        detalle:
+          evento.usuarioNombre
+            ? `Atendida por ${evento.usuarioNombre}`
+            : "Se asignó un responsable"
+      };
+
+    case "CONTACTO_WHATSAPP":
+      return {
+        titulo: "Contacto por WhatsApp",
+        detalle:
+          evento.estado
+            ? `Estado: ${
+                ESTADOS_WHATSAPP_LABELS[
+                  normalizarEstadoWhatsapp(evento.estado)
+                ] || evento.estado
+              }`
+            : "Se abrió el contacto con el cliente"
+      };
+
+    case "INCIDENCIA_REPORTADA":
+      return {
+        titulo: "Incidencia reportada",
+        detalle: [
+          evento.motivo,
+          evento.observaciones
+        ].filter(Boolean).join(" · ")
+      };
+
+    case "INCIDENCIA_RESUELTA":
+      return {
+        titulo: "Incidencia resuelta",
+        detalle: [
+          evento.motivo,
+          evento.solucion
+        ].filter(Boolean).join(" · ")
+      };
+
+    case "SOLICITUD_CANCELADA":
+      return {
+        titulo: "Solicitud cancelada",
+        detalle: [
+          evento.motivo,
+          evento.observaciones
+        ].filter(Boolean).join(" · ")
+      };
+
+    case "SOLICITUD_EDITADA":
+      return {
+        titulo: "Solicitud editada",
+        detalle:
+          evento.detalle ||
+          "Se modificaron datos de la solicitud"
+      };
+
+    case "SOLICITUD_CREADA":
+      return {
+        titulo: "Solicitud creada",
+        detalle:
+          evento.detalle ||
+          "Se registró la solicitud"
+      };
+
+    default:
+      return {
+        titulo:
+          String(evento.tipo || "Movimiento")
+            .replaceAll("_", " ")
+            .toLowerCase()
+            .replace(/^\w/, letra => letra.toUpperCase()),
+        detalle:
+          evento.detalle ||
+          evento.observaciones ||
+          evento.motivo ||
+          ""
+      };
+  }
+}
+
+function abrirHistorialWhatsapp(id) {
+  const solicitud =
+    solicitudesWhatsapp.find(
+      item => item.id === id
+    );
+
+  if (!solicitud) {
+    alert("No se encontró la solicitud.");
+    return;
+  }
+
+  const modal =
+    asegurarModalHistorialWhatsapp();
+
+  const historial =
+    Array.isArray(solicitud.historial)
+      ? [...solicitud.historial]
+      : [];
+
+  historial.sort((a, b) => {
+    const fechaA =
+      new Date(a?.fechaISO || 0).getTime() || 0;
+
+    const fechaB =
+      new Date(b?.fechaISO || 0).getTime() || 0;
+
+    return fechaB - fechaA;
+  });
+
+  $("#waHistorialReferencia").textContent =
+    solicitud.referencia ||
+    "Sin referencia";
+
+  $("#waHistorialResumen").innerHTML = `
+    <p>
+      <strong>Cliente:</strong>
+      ${escapeHtml(
+        solicitud.cliente || "Cliente sin nombre"
+      )}
+    </p>
+
+    <p>
+      <strong>Estado actual:</strong>
+      ${escapeHtml(
+        ESTADOS_WHATSAPP_LABELS[
+          normalizarEstadoWhatsapp(
+            solicitud.estado
+          )
+        ] ||
+        solicitud.estado ||
+        "Confirmar pedido"
+      )}
+    </p>
+  `;
+
+  const contenido =
+    $("#waHistorialContenido");
+
+  if (!historial.length) {
+    contenido.innerHTML = `
+      <div class="empty">
+        Esta solicitud todavía no tiene movimientos registrados.
+      </div>
+    `;
+  } else {
+    contenido.innerHTML =
+      historial.map(evento => {
+        const info =
+          obtenerDetalleHistorialWhatsapp(
+            evento
+          );
+
+        return `
+          <article class="wa-history-item">
+            <div>
+              <strong>
+                ${escapeHtml(info.titulo)}
+              </strong>
+
+              <small>
+                ${escapeHtml(
+                  fechaHistorialWhatsapp(
+                    evento.fechaISO
+                  )
+                )}
+              </small>
+            </div>
+
+            ${
+              info.detalle
+                ? `
+                  <p>
+                    ${escapeHtml(info.detalle)}
+                  </p>
+                `
+                : ""
+            }
+
+            <span>
+              ${
+                escapeHtml(
+                  evento.usuarioNombre ||
+                  "Sistema"
+                )
+              }
+            </span>
+          </article>
+        `;
+      }).join("");
+  }
+
+  modal.showModal();
+}
+
+document.addEventListener(
+  "click",
+  event => {
+    const boton =
+      event.target.closest(
+        "[data-wa-historial]"
+      );
+
+    if (!boton) return;
+
+    abrirHistorialWhatsapp(
+      boton.dataset.waHistorial
+    );
+  }
+);
+
+function obtenerTextoBotonWhatsapp(estado) {
+
+  switch (normalizarEstadoWhatsapp(estado)) {
+
+    case "confirmar":
+      return "Confirmar por WhatsApp";
+
+    case "pendiente_preparacion":
+      return "Avisar seguimiento";
+
+    case "preparado":
+      return "Avisar preparado";
+
+    case "listo":
+      return "Avisar pedido listo";
+
+    case "finalizado":
+      return "Agradecer compra";
+
+    default:
+      return "WhatsApp cliente";
+  }
+}
+
+function renderTarjetaKanbanWhatsapp(item) {
+  const alerta = obtenerAlertaTiempoWhatsapp(item);
+  return `
+    <article
+      class="wa-kanban-card ${item.incidenciaActiva ? "has-active-incident" : ""} ${normalizarEstadoWhatsapp(item.estado) === "finalizado" ? "is-finalized" : ""}"
+      draggable="${!item.incidenciaActiva && !["finalizado", "cancelado"].includes(normalizarEstadoWhatsapp(item.estado))}"
+      data-id="${escapeHtml(item.id)}"
+    >
+
+      <div class="wa-card-reference">
+        ${escapeHtml(item.referencia)}
+      </div>
+
+      <div class="wa-card-client">
+        ${escapeHtml(item.cliente || "Cliente sin nombre")}
+      </div>
+
+      <div class="wa-card-product">
+        ${escapeHtml(resumenProductosWhatsappTexto(item))}
+      </div>
+
+      <div class="wa-card-price">
+        ${moneda(item.monto)}
+      </div>
+
+              ${
+          alerta && alerta.nivel !== "normal"
+            ? `
+              <div class="wa-time-alert ${alerta.nivel}">
+                <i class="fa-solid fa-clock"></i>
+
+                ${
+                  ["pendiente_preparacion", "preparado"]
+                    .includes(
+                      normalizarEstadoWhatsapp(
+                        item.estado
+                      )
+                    )
+                    ? (
+                        alerta.nivel === "critico"
+                          ? "Preparación excedida"
+                          : "Demora en preparación"
+                      )
+                    : (
+                        alerta.nivel === "critico"
+                          ? "Atención requerida"
+                          : "Demora"
+                      )
+                }
+
+                · ${obtenerTextoTiempoWhatsapp(alerta.minutos)}
+              </div>
+            `
+            : ""
+        }
+
+        ${
+  item.incidenciaActiva
+    ? `
+      <div class="wa-incidencia-alert">
+
+        <div class="wa-incidencia-title">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          Incidencia
+        </div>
+
+        <strong>
+          ${escapeHtml(item.incidenciaMotivo || "")}
+        </strong>
+
+        <span>
+          ${escapeHtml(item.incidenciaObservaciones || "")}
+        </span>
+
+      </div>
+    `
+    : ""
+}
+
+${
+  item.incidenciaActiva && esAdministradorWhatsapp()
+    ? `
+      <button
+        type="button"
+        class="wa-btn-resolver-incidencia"
+        data-wa-resolver-incidencia="${escapeHtml(item.id)}"
+      >
+        <i class="fa-solid fa-check"></i>
+        Resolver incidencia
+      </button>
+    `
+    : ""
+}
+
+${
+  esAdministradorWhatsapp() &&
+  normalizarEstadoWhatsapp(item.estado) !== "finalizado" &&
+  normalizarEstadoWhatsapp(item.estado) !== "cancelado"
+    ? `
+      <button
+        type="button"
+        class="wa-btn-cancelar"
+        data-wa-cancelar="${escapeHtml(item.id)}"
+      >
+        <i class="fa-solid fa-ban"></i>
+        Cancelar solicitud
+      </button>
+    `
+    : ""
+}
+
+      <div class="wa-card-meta">
+
+        <span>
+          Grupo:
+          <strong>${escapeHtml(item.grupo || "-")}</strong>
+        </span>
+
+        <span>
+          Publicó:
+          <strong>${escapeHtml(item.publicadoPor || "-")}</strong>
+        </span>
+
+        <span>
+          Responsable:
+          <strong>${escapeHtml(nombreResponsableWhatsapp(item) || "Sin asignar")}</strong>
+        </span>
+        ${nombreResponsableWhatsapp(item)
+          ? `<span class="wa-card-owner"><i class="fa-solid fa-user-check"></i> Pedido tomado por <strong>${escapeHtml(nombreResponsableWhatsapp(item))}</strong></span>`
+          : `<span class="wa-card-owner pending"><i class="fa-regular fa-user"></i> Pedido sin tomar</span>`
+        }
+        <button
+          type="button"
+          class="wa-btn-historial"
+          data-wa-historial="${escapeHtml(item.id)}"
+        >
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          Historial
+        </button>
+
+        ${
+          esAdministradorWhatsapp()
+            ? `
+              <button
+                type="button"
+                class="wa-btn-editar"
+                data-wa-editar="${escapeHtml(item.id)}"
+              >
+                <i class="fa-solid fa-pen"></i>
+                Editar
+              </button>
+            `
+            : ""
+        }
+
+        <button
+  type="button"
+  class="wa-btn-whatsapp"
+  data-wa-contactar="${escapeHtml(item.id)}"
+>
+  <i class="fa-brands fa-whatsapp"></i>
+  WhatsApp
+</button>
+        ${
+  !nombreResponsableWhatsapp(item)
+    ? `
+      <button
+        type="button"
+        class="wa-btn-tomar"
+        data-wa-tomar="${escapeHtml(item.id)}"
+      >
+        <i class="fa-solid fa-user-check"></i>
+        Tomar solicitud
+      </button>
+    `
+    : `
+      <div class="wa-responsable-asignado">
+        <i class="fa-solid fa-circle-check"></i>
+        Atendido por
+        <strong>${escapeHtml(item.responsable)}</strong>
+      </div>
+    `
+}
+
+        <span>
+          ${obtenerTiempoTranscurrido(item.fechaCreacion)}
+        </span>
+
+      </div>
+
+      <select
+        class="wa-card-status-select" data-id="${escapeHtml(item.id)}">
+        <option value="confirmar" ${normalizarEstadoWhatsapp(item.estado) === "confirmar" ? "selected" : ""}>
+          Confirmar pedido
+        </option>
+
+        <option value="pendiente_preparacion" ${normalizarEstadoWhatsapp(item.estado) === "pendiente_preparacion" ? "selected" : ""}>
+          Pendiente preparación
+        </option>
+
+        <option value="preparado" ${normalizarEstadoWhatsapp(item.estado) === "preparado" ? "selected" : ""}>
+          Preparado
+        </option>
+
+        <option value="listo" ${normalizarEstadoWhatsapp(item.estado) === "listo" ? "selected" : ""}>
+          Listo
+        </option>
+
+        <option value="finalizado" ${normalizarEstadoWhatsapp(item.estado) === "finalizado" ? "selected" : ""}>
+          Finalizado
+        </option>
+      </select>
+
+      ${
+  normalizarEstadoWhatsapp(item.estado) !== "finalizado" && !item.incidenciaActiva
+    ? `
+      <button
+        type="button"
+        class="wa-btn-incidencia"
+        data-wa-incidencia="${escapeHtml(item.id)}"
+      >
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        Reportar incidencia
+      </button>
+    `
+    : ""
+}
+
+    </article>
+  `;
+}
+
+
+async function tomarSolicitudWhatsapp(id) {
+
+  const solicitud = solicitudesWhatsapp.find(
+    item => item.id === id
+  );
+  if (!solicitud) return;
+
+  if (solicitudWhatsappEstaCancelada(solicitud)) {
+    alert("Esta solicitud está cancelada y ya no puede cambiar de estado.");
+    return;
+  }
+
+
+  if (solicitud.incidenciaActiva) {
+    alert("Esta solicitud tiene una incidencia activa. Debe resolverse antes de poder tomarla.");
+    return;
+  }
+
+  if (nombreResponsableWhatsapp(solicitud)) {
+    alert(`Esta solicitud ya está siendo atendida por ${nombreResponsableWhatsapp(solicitud)}.`);
+    return;
+  }
+
+  const responsableNombre =
+    perfilActual?.nombre ||
+    usuarioActual?.email ||
+    "Usuario";
+
+  try {
+
+ const estadoActual = normalizarEstadoWhatsapp(solicitud.estado);
+ const estadoAlTomar = estadoActual === "confirmar" ? "pendiente_preparacion" : estadoActual;
+
+ const datosActualizacion = {
+
+  responsable:
+    responsableNombre,
+
+  responsablePreparacion:
+    responsableNombre,
+
+  responsableUid:
+    usuarioActual?.uid || "",
+
+  responsablePreparacionUid:
+    usuarioActual?.uid || "",
+
+  estado:
+    estadoAlTomar,
+
+  fechaAtencion:
+    serverTimestamp(),
+
+  ...(estadoActual === "confirmar" ? { fechaConfirmacion: serverTimestamp() } : {}),
+
+  ultimaActualizacion:
+    serverTimestamp(),
+
+  historial:
+    arrayUnion({
+
+      tipo:
+        "SOLICITUD_TOMADA",
+
+      estadoAnterior:
+        solicitud.estado,
+
+      estadoNuevo:
+        estadoAlTomar,
+
+      usuarioUid:
+        usuarioActual?.uid || "",
+
+      usuarioNombre:
+        responsableNombre,
+
+      fechaISO:
+        new Date().toISOString()
+
+    })
+
+};
+
+
+
+await updateDoc(
+  doc(
+    db,
+    "solicitudes_whatsapp",
+    id
+  ),
+  datosActualizacion
+);
+
+  } catch (error) {
+
+    console.error(
+      "Error al tomar solicitud WhatsApp:",
+      error
+    );
+
+    alert(
+      "No se pudo asignar la solicitud."
+    );
+
+  }
+
+}
+document.addEventListener("click", event => {
+
+  const botonTomar =
+    event.target.closest(
+      "[data-wa-tomar]"
+    );
+
+  if (!botonTomar) return;
+
+  const id =
+    botonTomar.dataset.waTomar;
+
+  tomarSolicitudWhatsapp(id);
+
+});
+
+let whatsappCardArrastradaId = null;
+
+function configurarInteraccionesKanbanWhatsapp() {
+  document.querySelectorAll(".wa-card-status-select").forEach(select => {
+    select.addEventListener("change", () => {
+      cambiarEstadoWhatsapp(select.dataset.id, select.value);
+    });
+  });
+
+  document.querySelectorAll(".wa-kanban-card").forEach(card => {
+    card.addEventListener("dragstart", event => {
+      if (card.getAttribute("draggable") !== "true") {
+        event.preventDefault();
+        return;
+      }
+      whatsappCardArrastradaId = card.dataset.id;
+      card.classList.add("dragging");
+    });
+
+    card.addEventListener("dragend", () => {
+      whatsappCardArrastradaId = null;
+      card.classList.remove("dragging");
+      document.querySelectorAll(".kanban-dropzone").forEach(zona => {
+        zona.classList.remove("drag-over");
+      });
+    });
+  });
+
+  document.querySelectorAll(".kanban-dropzone").forEach(zona => {
+    zona.addEventListener("dragover", event => {
+      event.preventDefault();
+      zona.classList.add("drag-over");
+    });
+
+    zona.addEventListener("dragleave", () => {
+      zona.classList.remove("drag-over");
+    });
+
+    zona.addEventListener("drop", event => {
+      event.preventDefault();
+      zona.classList.remove("drag-over");
+
+      if (!whatsappCardArrastradaId) return;
+
+      cambiarEstadoWhatsapp(
+        whatsappCardArrastradaId,
+        zona.dataset.estado
+      );
+    });
+  });
+}
+
+function actualizarContadoresKanbanWhatsapp() {
+
+  const contar = estado =>
+    solicitudesWhatsapp.filter(
+      item => item.estado === estado
+    ).length;
+
+  $("#waKanbanCountConfirmar").textContent =
+    contar("confirmar");
+
+  $("#waKanbanCountPendiente").textContent =
+    contar("pendiente_preparacion");
+
+  $("#waKanbanCountPreparado").textContent =
+    contar("preparado");
+
+  $("#waKanbanCountListo").textContent =
+    contar("listo");
+
+  $("#waKanbanCountFinalizado").textContent =
+    contar("finalizado");
+}
+
 const menuLateral = $("#menuLateral");
 const menuOverlay = $("#menuOverlay");
 const btnAbrirMenu = $("#btnAbrirMenu");
+
+const btnNuevaSolicitudWhatsApp =
+  $("#btnNuevaSolicitudWhatsApp");
+
+const modalWhatsappSolicitud =
+  $("#modalWhatsappSolicitud");
+
+const formWhatsappSolicitud =
+  $("#formWhatsappSolicitud");
+
+btnNuevaSolicitudWhatsApp?.addEventListener(
+  "click",
+  () => {
+
+    formWhatsappSolicitud?.reset();
+
+    productosWhatsappNueva = [];
+    waProductoCapturaActualId = "";
+    waProductoNuevoEditandoId = "";
+
+    asegurarProductosNuevaSolicitudWhatsapp();
+    asegurarEntregaNuevaSolicitudWhatsapp();
+
+    const radiosEntrega =
+      document.querySelectorAll('input[name="waTipoEntrega"]');
+
+    radiosEntrega.forEach(radio => {
+      radio.checked = false;
+    });
+
+    $("#waPuntoEntrega").value = "";
+    $("#waUbicacion").value = "";
+    $("#waCantidadProducto").value = "1";
+
+    actualizarCamposEntregaSolicitudWhatsapp("wa");
+    renderProductosWhatsappNueva();
+
+    modalWhatsappSolicitud?.showModal();
+
+  }
+);
+
+document
+  .querySelectorAll('[data-close="modalWhatsappSolicitud"]')
+  .forEach(boton => {
+
+    boton.addEventListener("click", () => {
+
+      modalWhatsappSolicitud?.close();
+
+    });
+
+  });
+
+  formWhatsappSolicitud?.addEventListener(
+  "submit",
+  async event => {
+
+    event.preventDefault();
+
+    const productoPendiente =
+      $("#waProducto")?.value.trim() ||
+      $("#waIdProducto")?.value.trim();
+
+    if (productoPendiente) {
+      const agregado =
+        agregarProductoWhatsappNueva();
+
+      if (!agregado) return;
+    }
+
+    // =========================
+    // Validaciones finales de Nueva solicitud WhatsApp
+    // =========================
+    const cliente =
+      $("#waCliente")?.value.trim() || "";
+
+    const telefono =
+      $("#waTelefono")?.value.trim() || "";
+
+    const vendedor =
+      $("#waVendedor")?.value || "";
+
+    if (!cliente) {
+      alert("Escribe el nombre del cliente.");
+      $("#waCliente")?.focus();
+      return;
+    }
+
+    if (!telefono) {
+      alert("Escribe el teléfono del cliente.");
+      $("#waTelefono")?.focus();
+      return;
+    }
+
+    const telefonoDigitos =
+      telefono.replace(/\D/g, "");
+
+    if (
+      telefonoDigitos.length !== 10
+    ) {
+      alert(
+        "El teléfono debe contener 10 dígitos."
+      );
+      $("#waTelefono")?.focus();
+      return;
+    }
+
+    if (!vendedor) {
+      alert("Selecciona un vendedor.");
+      $("#waVendedor")?.focus();
+      return;
+    }
+
+    if (!productosWhatsappNueva.length) {
+      alert(
+        "Agrega por lo menos un producto."
+      );
+      $("#waIdProducto")?.focus();
+      return;
+    }
+
+    const productoInvalido =
+      productosWhatsappNueva.find(
+        producto => {
+          const idProducto =
+            String(
+              producto.idProducto ||
+              producto.clave ||
+              ""
+            ).trim();
+
+          const nombre =
+            String(
+              producto.nombre || ""
+            ).trim();
+
+          const precio =
+            Number(producto.precio);
+
+          const cantidad =
+            Number(producto.cantidad);
+
+          return (
+            !idProducto ||
+            !nombre ||
+            !Number.isFinite(precio) ||
+            precio <= 0 ||
+            !Number.isInteger(cantidad) ||
+            cantidad < 1
+          );
+        }
+      );
+
+    if (productoInvalido) {
+      alert(
+        "Hay un producto agregado con datos incompletos o inválidos. Revísalo antes de crear la solicitud."
+      );
+      return;
+    }
+
+    const productos =
+      productosWhatsappNueva.map(
+        producto => ({
+          idLinea:
+            producto.idLinea ||
+            crypto.randomUUID(),
+
+          idProducto:
+            producto.idProducto ||
+            producto.clave ||
+            "",
+
+          clave:
+            producto.idProducto ||
+            producto.clave ||
+            "",
+
+          nombre:
+            producto.nombre.trim(),
+
+          precio:
+            Number(producto.precio),
+
+          cantidad:
+            Number(producto.cantidad)
+        })
+      );
+
+    const monto =
+      calcularTotalProductosWhatsapp(
+        productos
+      );
+
+    const tipoEntrega =
+      document.querySelector(
+        'input[name="waTipoEntrega"]:checked'
+      )?.value || "";
+
+    if (!tipoEntrega) {
+      alert("Selecciona si el pedido se recoge o se entrega a domicilio.");
+      return;
+    }
+
+    const puntoEntrega =
+      tipoEntrega === "PUNTO_ENTREGA"
+        ? $("#waPuntoEntrega")?.value || ""
+        : "";
+
+    const domicilio =
+      tipoEntrega === "DOMICILIO"
+        ? $("#waUbicacion")?.value.trim() || ""
+        : "";
+
+    if (
+      tipoEntrega === "PUNTO_ENTREGA" &&
+      !puntoEntrega
+    ) {
+      alert("Selecciona el punto de entrega.");
+      return;
+    }
+
+    if (
+      tipoEntrega === "DOMICILIO" &&
+      !domicilio
+    ) {
+      alert("Escribe el domicilio completo.");
+      return;
+    }
+
+    const nuevaSolicitud = {
+      id:
+        crypto.randomUUID(),
+
+      referencia:
+        `NV-${Date.now()
+          .toString()
+          .slice(-6)}`,
+
+      cliente,
+
+      telefono,
+
+      productos,
+
+      producto:
+        resumenProductoLegacyWhatsapp(
+          productos
+        ),
+
+      monto,
+
+      tipoEntrega,
+      puntoEntrega,
+
+      ubicacion:
+        tipoEntrega === "PUNTO_ENTREGA"
+          ? puntoEntrega
+          : domicilio,
+
+      vendedor,
+
+      responsable: "",
+
+      estado: "confirmar",
+
+      fechaCreacion:
+        new Date().toISOString(),
+
+      ultimaActualizacion:
+        new Date().toISOString()
+    };
+
+    try {
+      await addDoc(
+        collection(
+          db,
+          "solicitudes_whatsapp"
+        ),
+        {
+          referencia:
+            nuevaSolicitud.referencia,
+
+          cliente:
+            nuevaSolicitud.cliente,
+
+          telefono:
+            nuevaSolicitud.telefono,
+
+          productos:
+            nuevaSolicitud.productos,
+
+          producto:
+            nuevaSolicitud.producto,
+
+          monto:
+            nuevaSolicitud.monto,
+
+          tipoEntrega:
+            nuevaSolicitud.tipoEntrega,
+
+          puntoEntrega:
+            nuevaSolicitud.puntoEntrega,
+
+          ubicacion:
+            nuevaSolicitud.ubicacion,
+
+          vendedor:
+            nuevaSolicitud.vendedor,
+
+          responsable: "",
+
+          responsablePreparacion: "",
+
+          estado: "confirmar",
+
+          creadoPorUid:
+            usuarioActual?.uid || "",
+
+          creadoPorNombre:
+            perfilActual?.nombre ||
+            usuarioActual?.email ||
+            "",
+
+          fechaCreacion:
+            serverTimestamp(),
+
+          ultimaActualizacion:
+            serverTimestamp(),
+
+          historial:
+            [{
+              tipo:
+                "SOLICITUD_CREADA",
+
+              detalle:
+                `${productos.length} producto(s) · ${moneda(monto)}`,
+
+              usuarioUid:
+                usuarioActual?.uid || "",
+
+              usuarioNombre:
+                perfilActual?.nombre ||
+                usuarioActual?.email ||
+                "Usuario",
+
+              fechaISO:
+                new Date().toISOString()
+            }]
+        }
+      );
+
+      productosWhatsappNueva = [];
+
+      modalWhatsappSolicitud.close();
+
+    } catch (error) {
+      console.error(
+        "Error al guardar solicitud WhatsApp:",
+        error
+      );
+
+      alert(
+        "No se pudo guardar la solicitud en Firebase."
+      );
+    }
+  }
+);
 
 function alternarMenuLateral(abierto) {
   menuLateral.classList.toggle("open", abierto);
@@ -3340,6 +8957,29 @@ function alternarMenuLateral(abierto) {
 btnAbrirMenu.addEventListener("click", () => alternarMenuLateral(true));
 $("#btnCerrarMenu").addEventListener("click", () => alternarMenuLateral(false));
 menuOverlay.addEventListener("click", () => alternarMenuLateral(false));
+
+$("#btnWhatsapp")?.addEventListener("click", mostrarVistaWhatsapp);
+$("#waSearch")?.addEventListener("input", () => {
+  renderSolicitudesWhatsapp();
+  if (!$("#waVistaKanban")?.classList.contains("hidden")) renderKanbanWhatsapp();
+});
+$("#waStatusFilter")?.addEventListener("change", () => {
+  renderSolicitudesWhatsapp();
+  if (!$("#waVistaKanban")?.classList.contains("hidden")) renderKanbanWhatsapp();
+});
+document.querySelectorAll(".whatsapp-stat-card").forEach(card => {
+  card.addEventListener("click", () => {
+    const select = $("#waStatusFilter");
+    if (select) select.value = card.dataset.statusFilter || "todos";
+    renderSolicitudesWhatsapp();
+    if (!$("#waVistaKanban")?.classList.contains("hidden")) renderKanbanWhatsapp();
+  });
+});
+$("#whatsappSolicitudesContainer")?.addEventListener("click", event => {
+  const boton = event.target.closest("[data-wa-id][data-wa-next]");
+  if (!boton) return;
+  cambiarEstadoWhatsapp(boton.dataset.waId, boton.dataset.waNext);
+});
 
 document.querySelectorAll(".sidebar-link:not(.sidebar-logout)").forEach(boton => {
   boton.addEventListener("click", () => {
@@ -3355,3 +8995,41 @@ window.addEventListener("keydown", event => {
 
 cargarCatalogoProductos();
 configurarBotonEscanerMovil();
+
+
+const btnExportarTrazabilidadWhatsapp =
+  $("#btnExportarTrazabilidadWhatsapp");
+
+console.log(
+  "BOTON EXPORTAR:",
+  btnExportarTrazabilidadWhatsapp
+);
+
+btnExportarTrazabilidadWhatsapp?.addEventListener(
+  "click",
+  () => {
+
+    console.log("CLICK EXPORTAR");
+
+    exportarTrazabilidadWhatsapp();
+
+  }
+);
+
+document.addEventListener(
+  "click",
+  event => {
+
+    const boton =
+      event.target.closest(
+        "[data-wa-contactar]"
+      );
+
+    if (!boton) return;
+
+    abrirWhatsappCliente(
+      boton.dataset.waContactar
+    );
+
+  }
+);
