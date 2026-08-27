@@ -100,133 +100,51 @@ function construirLinkWhatsapp({
 }
 
 
-function acortarUrl(
-  urlLarga
-) {
+async function acortarUrl(urlLarga) {
 
-  /*
-   * is.gd no permite fetch() directo desde GitHub Pages por CORS.
-   * Su API sí soporta JSONP mediante el parámetro callback,
-   * que está pensado para datos entre dominios.
-   */
-  return new Promise(
-    (resolve, reject) => {
+  const respuesta =
+    await fetch(
+      "https://cleanuri.com/api/v1/shorten",
+      {
+        method: "POST",
 
-      const callbackName =
-        `isgdCallback_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded"
+        },
 
-
-      const script =
-        document.createElement(
-          "script"
-        );
-
-
-      const limpiar = () => {
-
-        if (script.parentNode) {
-          script.parentNode.removeChild(script);
-        }
+        body:
+          new URLSearchParams({
+            url: urlLarga
+          })
+      }
+    );
 
 
-        try {
-          delete window[callbackName];
-        } catch (_) {
-          window[callbackName] = undefined;
-        }
+  if (!respuesta.ok) {
 
-      };
+    throw new Error(
+      "No se pudo acortar el enlace."
+    );
 
-
-      const timeout =
-        setTimeout(
-          () => {
-
-            limpiar();
+  }
 
 
-            reject(
-              new Error(
-                "El acortador tardó demasiado en responder."
-              )
-            );
-
-          },
-          12000
-        );
+  const datos =
+    await respuesta.json();
 
 
-      window[callbackName] =
-        data => {
+  if (!datos.result_url) {
 
-          clearTimeout(
-            timeout
-          );
+    throw new Error(
+      datos.error ||
+      "El acortador no devolvió una URL."
+    );
 
-
-          limpiar();
-
-
-          if (
-            data?.shorturl
-          ) {
-
-            resolve(
-              data.shorturl
-            );
-
-            return;
-
-          }
+  }
 
 
-          reject(
-            new Error(
-              data?.errormessage ||
-              "No se pudo acortar el enlace."
-            )
-          );
-
-        };
-
-
-      script.onerror =
-        () => {
-
-          clearTimeout(
-            timeout
-          );
-
-
-          limpiar();
-
-
-          reject(
-            new Error(
-              "No se pudo conectar con el acortador."
-            )
-          );
-
-        };
-
-
-      const endpoint =
-        "https://is.gd/create.php" +
-        `?format=json` +
-        `&callback=${encodeURIComponent(callbackName)}` +
-        `&url=${encodeURIComponent(urlLarga)}`;
-
-
-      script.src =
-        endpoint;
-
-
-      document.head.appendChild(
-        script
-      );
-
-    }
-  );
+  return datos.result_url;
 
 }
 
