@@ -100,51 +100,56 @@ function construirLinkWhatsapp({
 }
 
 
-async function acortarUrl(urlLarga) {
+async function acortarUrl(
+  urlLarga
+) {
 
   const respuesta =
     await fetch(
-      "https://cleanuri.com/api/v1/shorten",
+      "https://noventia-whatsapptu-cuentaworkersdev.ing-ed-mtz-leon.workers.dev/",
       {
         method: "POST",
 
         headers: {
           "Content-Type":
-            "application/x-www-form-urlencoded"
+            "application/json"
         },
 
         body:
-          new URLSearchParams({
+          JSON.stringify({
             url: urlLarga
           })
       }
     );
 
 
-  if (!respuesta.ok) {
+  let datos = null;
+
+  try {
+    datos =
+      await respuesta.json();
+  } catch (_) {
+    throw new Error(
+      "El backend respondió con un formato inválido."
+    );
+  }
+
+
+  if (
+    !respuesta.ok ||
+    !datos?.ok ||
+    !datos?.url
+  ) {
 
     throw new Error(
+      datos?.error ||
       "No se pudo acortar el enlace."
     );
 
   }
 
 
-  const datos =
-    await respuesta.json();
-
-
-  if (!datos.result_url) {
-
-    throw new Error(
-      datos.error ||
-      "El acortador no devolvió una URL."
-    );
-
-  }
-
-
-  return datos.result_url;
+  return datos.url;
 
 }
 
@@ -258,8 +263,9 @@ async function generarPublicacion() {
 
   try {
 
-    boton.disabled =
-      true;
+    if (boton) {
+      boton.disabled = true;
+    }
 
 
     mostrarEstado(
@@ -333,7 +339,8 @@ async function generarPublicacion() {
 
 
     mostrarEstado(
-      "No se pudo generar el enlace corto. Intenta nuevamente.",
+      error?.message ||
+      "No se pudo generar el enlace corto.",
       true
     );
 
