@@ -1,3 +1,33 @@
+import { firebaseConfig } from "../firebase-config.js";
+
+import {
+  initializeApp
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+import {
+  getAuth,
+  signInAnonymously
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+
+
+const firebaseApp =
+  initializeApp(firebaseConfig);
+
+const db =
+  getFirestore(firebaseApp);
+
+const auth =
+  getAuth(firebaseApp);
+
+
 const WHATSAPP_GENERAL =
   "525516792785";
 
@@ -57,99 +87,88 @@ function mostrarEstado(
 }
 
 
-function construirMensajeWhatsapp({
-  producto,
-  precio,
-  vendedor
-}) {
+function obtenerUrlBase() {
 
-  return [
-    "Hola 👋",
-    "",
-    "Quiero comprar este producto:",
-    "",
-    `Producto: ${producto}`,
-    `Precio: ${moneda(precio)}`,
-    `Publicado por: ${vendedor}`,
-    "",
-    "¿Me apoyan con la disponibilidad?"
-  ].join("\n");
+  const url =
+    new URL(
+      window.location.href
+    );
+
+
+  url.search = "";
+  url.hash = "";
+
+
+  return url.toString();
 
 }
 
 
-function construirLinkWhatsapp({
-  producto,
-  precio,
-  vendedor
-}) {
+function construirLinkCorto(id) {
 
-  const mensaje =
-    construirMensajeWhatsapp({
-      producto,
-      precio,
-      vendedor
-    });
+  const url =
+    new URL(
+      window.location.href
+    );
 
+  url.search = "";
+  url.hash = "";
 
-  return (
-    `https://wa.me/${WHATSAPP_GENERAL}` +
-    `?text=${encodeURIComponent(mensaje)}`
+  // Evita mostrar index.html en la liga.
+  url.pathname =
+    url.pathname.replace(
+      /index\.html$/i,
+      ""
+    );
+
+  url.searchParams.set(
+    "p",
+    id
   );
 
+  return url.toString();
+
 }
 
 
-async function acortarUrl(
-  urlLarga
-) {
+async function generarIdCortoDisponible() {
 
-  const respuesta =
-    await fetch(
-      "https://noventia-whatsapptu-cuentaworkersdev.ing-ed-mtz-leon.workers.dev/",
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
-
-        body:
-          JSON.stringify({
-            url: urlLarga
-          })
-      }
-    );
-
-
-  let datos = null;
-
-  try {
-    datos =
-      await respuesta.json();
-  } catch (_) {
-    throw new Error(
-      "El backend respondió con un formato inválido."
-    );
-  }
-
-
-  if (
-    !respuesta.ok ||
-    !datos?.ok ||
-    !datos?.url
+  // Código de 6 dígitos fácil de leer y compartir.
+  for (
+    let intento = 0;
+    intento < 12;
+    intento += 1
   ) {
 
-    throw new Error(
-      datos?.error ||
-      "No se pudo acortar el enlace."
-    );
+    const id =
+      String(
+        Math.floor(
+          100000 +
+          Math.random() * 900000
+        )
+      );
+
+    const referencia =
+      doc(
+        db,
+        "publicaciones_whatsapp",
+        id
+      );
+
+    const existente =
+      await getDoc(
+        referencia
+      );
+
+    if (!existente.exists()) {
+      return id;
+    }
 
   }
 
-
-  return datos.url;
+  throw new Error(
+    "No se pudo generar una referencia disponible."
+  );
 
 }
 
@@ -164,8 +183,153 @@ function textoPublicacion(
     "",
     "¿Te interesa este producto?",
     "Da clic aquí 👇",
-    publicacion.linkCorto
+    publicacion.link
   ].join("\n");
+
+}
+
+
+function construirMensajeWhatsapp({
+  id,
+  producto,
+  precio,
+  vendedor
+}) {
+
+  return [
+    "Hola 👋",
+    "",
+    "Quiero comprar este producto:",
+    "",
+    `Referencia: ${id}`,
+    `Producto: ${producto}`,
+    `Precio: ${moneda(precio)}`,
+    `Publicado por: ${vendedor}`,
+    "",
+    "¿Me apoyan con la disponibilidad?"
+  ].join("\n");
+
+}
+
+
+async function asegurarSesionFirebase() {
+
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+
+  const credencial =
+    await signInAnonymously(auth);
+
+  return credencial.user;
+
+}
+
+
+async function abrirPublicacionCliente(
+  id
+) {
+
+  $("#vistaGenerador")
+    ?.classList.add(
+      "hidden"
+    );
+
+
+  $("#vistaRedireccion")
+    ?.classList.remove(
+      "hidden"
+    );
+
+
+  try {
+
+    await asegurarSesionFirebase();
+
+    const snapshot =
+      await getDoc(
+        doc(
+          db,
+          "publicaciones_whatsapp",
+          id
+        )
+      );
+
+
+    if (!snapshot.exists()) {
+
+      throw new Error(
+        "La publicación no existe."
+      );
+
+    }
+
+
+    const publicacion =
+      snapshot.data();
+
+
+    if (
+      publicacion.activo === false
+    ) {
+
+      throw new Error(
+        "Esta publicación ya no está disponible."
+      );
+
+    }
+
+
+    const mensaje =
+      construirMensajeWhatsapp({
+        id,
+        producto:
+          publicacion.producto || "",
+        precio:
+          publicacion.precio || 0,
+        vendedor:
+          publicacion.vendedor || ""
+      });
+
+
+    const linkWhatsapp =
+      `https://wa.me/${WHATSAPP_GENERAL}?text=${encodeURIComponent(mensaje)}`;
+
+
+    window.location.replace(
+      linkWhatsapp
+    );
+
+
+  } catch (error) {
+
+    console.error(error);
+
+
+    const mensaje =
+      $("#mensajeRedireccion");
+
+
+    if (mensaje) {
+
+      mensaje.textContent =
+        error.message ||
+        "No se pudo abrir esta publicación.";
+
+
+      mensaje.classList.add(
+        "error"
+      );
+
+    }
+
+
+    $(".spinner")
+      ?.classList.add(
+        "hidden"
+      );
+
+  }
 
 }
 
@@ -174,20 +338,20 @@ async function generarPublicacion() {
 
   const producto =
     $("#nombreProducto")
-      ?.value
-      .trim() || "";
+      .value
+      .trim();
 
 
   const precio =
     Number(
       $("#precioProducto")
-        ?.value
+        .value
     );
 
 
   const encargada =
     $("#encargada")
-      ?.value || "";
+      .value;
 
 
   if (!archivoFoto) {
@@ -209,9 +373,6 @@ async function generarPublicacion() {
       true
     );
 
-    $("#nombreProducto")
-      ?.focus();
-
     return;
 
   }
@@ -227,9 +388,6 @@ async function generarPublicacion() {
       true
     );
 
-    $("#precioProducto")
-      ?.focus();
-
     return;
 
   }
@@ -241,9 +399,6 @@ async function generarPublicacion() {
       "Selecciona la encargada.",
       true
     );
-
-    $("#encargada")
-      ?.focus();
 
     return;
 
@@ -263,37 +418,62 @@ async function generarPublicacion() {
 
   try {
 
-    if (boton) {
-      boton.disabled = true;
-    }
+    await asegurarSesionFirebase();
+
+    boton.disabled =
+      true;
 
 
     mostrarEstado(
-      "Generando enlace..."
+      "Generando publicación..."
     );
 
 
-    const linkWhatsapp =
-      construirLinkWhatsapp({
+    /*
+     * NO guardamos la imagen.
+     *
+     * Firebase únicamente conserva:
+     * producto + precio + vendedor.
+     */
+
+    const idCorto =
+      await generarIdCortoDisponible();
+
+
+    await setDoc(
+      doc(
+        db,
+        "publicaciones_whatsapp",
+        idCorto
+      ),
+      {
         producto,
         precio,
-        vendedor
-      });
+        vendedor,
+        encargada:
+          encargadaNombre,
+        activo:
+          true,
+        fechaCreacion:
+          serverTimestamp()
+      }
+    );
 
 
-    const linkCorto =
-      await acortarUrl(
-        linkWhatsapp
+    const link =
+      construirLinkCorto(
+        idCorto
       );
 
 
     publicacionActual = {
+      id:
+        idCorto,
       producto,
       precio,
       vendedor,
       encargadaNombre,
-      linkWhatsapp,
-      linkCorto
+      link
     };
 
 
@@ -313,11 +493,11 @@ async function generarPublicacion() {
 
     $("#resultadoLink")
       .textContent =
-        linkCorto;
+        link;
 
 
     $("#resultado")
-      ?.classList.remove(
+      .classList.remove(
         "hidden"
       );
 
@@ -340,16 +520,15 @@ async function generarPublicacion() {
 
     mostrarEstado(
       error?.message ||
-      "No se pudo generar el enlace corto.",
+      "No se pudo generar la publicación. Revisa los permisos de Firestore.",
       true
     );
 
 
   } finally {
 
-    if (boton) {
-      boton.disabled = false;
-    }
+    boton.disabled =
+      false;
 
   }
 
@@ -375,6 +554,12 @@ async function compartirPublicacion() {
 
   };
 
+
+  /*
+   * La imagen se comparte desde
+   * el teléfono, pero NO se guarda
+   * en Firebase.
+   */
 
   if (
     archivoFoto &&
@@ -443,51 +628,33 @@ async function copiarPublicacion() {
   }
 
 
-  try {
-
-    await navigator.clipboard
-      .writeText(
-        textoPublicacion(
-          publicacionActual
-        )
-      );
-
-
-    mostrarEstado(
-      "Publicación copiada."
+  await navigator.clipboard
+    .writeText(
+      textoPublicacion(
+        publicacionActual
+      )
     );
 
 
-  } catch (error) {
-
-    console.error(error);
-
-
-    mostrarEstado(
-      "No se pudo copiar la publicación.",
-      true
-    );
-
-  }
+  mostrarEstado(
+    "Publicación copiada."
+  );
 
 }
 
 
 function nuevaPublicacion() {
 
-  if ($("#foto")) {
-    $("#foto").value = "";
-  }
+  $("#foto").value =
+    "";
 
 
-  if ($("#nombreProducto")) {
-    $("#nombreProducto").value = "";
-  }
+  $("#nombreProducto").value =
+    "";
 
 
-  if ($("#precioProducto")) {
-    $("#precioProducto").value = "";
-  }
+  $("#precioProducto").value =
+    "";
 
 
   archivoFoto =
@@ -508,22 +675,18 @@ function nuevaPublicacion() {
 
 
   $("#previewFoto")
-    ?.removeAttribute(
+    .removeAttribute(
       "src"
     );
 
 
-  if ($("#previewFoto")) {
-
-    $("#previewFoto")
-      .style.display =
-        "none";
-
-  }
+  $("#previewFoto")
+    .style.display =
+      "none";
 
 
   $("#resultado")
-    ?.classList.add(
+    .classList.add(
       "hidden"
     );
 
@@ -536,7 +699,7 @@ function nuevaPublicacion() {
 
 
   $("#nombreProducto")
-    ?.focus();
+    .focus();
 
 }
 
@@ -642,4 +805,24 @@ function inicializarGenerador() {
 }
 
 
-inicializarGenerador();
+const parametros =
+  new URLSearchParams(
+    window.location.search
+  );
+
+
+const publicacionId =
+  parametros.get("p");
+
+
+if (publicacionId) {
+
+  abrirPublicacionCliente(
+    publicacionId
+  );
+
+} else {
+
+  inicializarGenerador();
+
+}
