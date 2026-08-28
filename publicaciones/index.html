@@ -16,11 +16,40 @@
     </header>
 
     <section class="card">
-      <label class="field photo-field">
+      <div class="field photo-field">
         <span>Foto del producto</span>
-        <input id="foto" type="file" accept="image/*" capture="environment">
-        <img id="previewFoto" class="photo-preview" alt="Vista previa del producto">
-      </label>
+
+        <div class="opciones-foto">
+          <label for="fotoCamara" class="btn-foto">
+            📷 Tomar foto
+          </label>
+
+          <label for="fotoGaleria" class="btn-foto">
+            🖼️ Elegir de galería
+          </label>
+        </div>
+
+        <input
+          id="fotoCamara"
+          type="file"
+          accept="image/*"
+          capture="environment"
+          hidden
+        >
+
+        <input
+          id="fotoGaleria"
+          type="file"
+          accept="image/*"
+          hidden
+        >
+
+        <img
+          id="previewFoto"
+          class="photo-preview"
+          alt="Vista previa del producto"
+        >
+      </div>
 
       <label class="field">
         <span>Nombre del producto</span>
@@ -89,6 +118,6 @@
   </section>
 
 
-  <script type="module" src="./publicaciones.js?v=5"></script>
+  <script type="module" src="./publicaciones.js?v=6"></script>
 </body>
 </html>

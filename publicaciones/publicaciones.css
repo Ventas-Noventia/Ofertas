@@ -278,3 +278,43 @@ select:focus {
   outline: 2px solid #4f8f8a;
   outline-offset: 2px;
 }
+
+.opciones-foto {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.btn-foto {
+  padding: 14px 12px;
+
+  background: #ffffff;
+  border: 1px solid #dcdcdc;
+  border-radius: 14px;
+
+  text-align: center;
+
+  font-size: 14px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.btn-foto:hover {
+  background: #f5f5f5;
+}
+
+.btn-foto:active {
+  transform: scale(0.98);
+}
+
+@media (max-width: 480px) {
+
+  .opciones-foto {
+    grid-template-columns: 1fr;
+  }
+
+}

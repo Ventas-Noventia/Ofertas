@@ -645,8 +645,21 @@ async function copiarPublicacion() {
 
 function nuevaPublicacion() {
 
-  $("#foto").value =
-    "";
+  const inputCamara =
+    $("#fotoCamara");
+
+  const inputGaleria =
+    $("#fotoGaleria");
+
+
+  if (inputCamara) {
+    inputCamara.value = "";
+  }
+
+
+  if (inputGaleria) {
+    inputGaleria.value = "";
+  }
 
 
   $("#nombreProducto").value =
@@ -704,47 +717,64 @@ function nuevaPublicacion() {
 }
 
 
+function procesarFoto(event) {
+
+  archivoFoto =
+    event.target.files?.[0] ||
+    null;
+
+
+  if (!archivoFoto) {
+    return;
+  }
+
+
+  if (fotoLocal) {
+
+    URL.revokeObjectURL(
+      fotoLocal
+    );
+
+  }
+
+
+  fotoLocal =
+    URL.createObjectURL(
+      archivoFoto
+    );
+
+
+  const preview =
+    $("#previewFoto");
+
+
+  if (preview) {
+
+    preview.src =
+      fotoLocal;
+
+
+    preview.style.display =
+      "block";
+
+  }
+
+}
+
+
 function inicializarGenerador() {
 
-  $("#foto")
+  $("#fotoCamara")
     ?.addEventListener(
       "change",
-      event => {
-
-        archivoFoto =
-          event.target.files?.[0] ||
-          null;
+      procesarFoto
+    );
 
 
-        if (!archivoFoto) {
-          return;
-        }
-
-
-        if (fotoLocal) {
-
-          URL.revokeObjectURL(
-            fotoLocal
-          );
-
-        }
-
-
-        fotoLocal =
-          URL.createObjectURL(
-            archivoFoto
-          );
-
-
-        $("#previewFoto").src =
-          fotoLocal;
-
-
-        $("#previewFoto")
-          .style.display =
-            "block";
-
-      }
+  $("#fotoGaleria")
+    ?.addEventListener(
+      "change",
+      procesarFoto
     );
 
 
