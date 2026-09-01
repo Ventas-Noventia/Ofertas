@@ -2448,3 +2448,34 @@ dialog { border: 1px solid rgba(7, 59, 76, .08); box-shadow: 0 28px 80px rgba(4,
     grid-column: 1 / -1;
   }
 }
+
+
+#modalCaja .reportes-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #dce6e5;
+  border-radius: 14px;
+}
+
+#modalCaja .reporte-tab {
+  flex: 1;
+  min-width: 140px;
+  padding: 12px 18px;
+  background: transparent;
+  color: var(--nov-navy, #173f49);
+  border-radius: 10px;
+}
+
+#modalCaja .reporte-tab.active {
+  background: var(--nov-navy, #173f49);
+  color: #fff;
+}
+
+#modalCaja .reporte-tab:focus-visible {
+  outline: 3px solid #9fdaca;
+  outline-offset: 2px;
+}

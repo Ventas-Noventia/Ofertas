@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Control de pedidos</title>
   <link rel="stylesheet" href="styles.css?v=29-noventia-ui" />
+  <link rel="stylesheet" href="reportes/reportes.css?v=1">
 </head>
 <body>
   <div id="aplicacion" class="hidden">
@@ -552,6 +553,37 @@
           <option value="Helen">Helen</option>
         </select>
       </label>
+
+       <label>
+        Estatus de pago
+        <select id="waEstatusPago" required>
+          <option value="">Seleccionar</option>
+          <option value="PENDIENTE">Pendiente de pago</option>
+          <option value="PAGADO">Pagado</option>
+          <option value="K_EFECTIVO">K efectivo</option>
+          <option value="APARTADO">Apartado</option>
+        </select>
+      </label>
+
+      <label id="waCampoMontoInicial" class="hidden">
+        <span id="waEtiquetaMontoInicial">Cantidad del primer apartado</span>
+        <input id="waMontoInicial" type="number" min="0.01" step="0.01" placeholder="0.00">
+      </label>
+
+      <label id="waCampoMetodoPago" class="hidden">
+        Método del primer pago
+        <select id="waMetodoPagoInicial">
+          <option value="">Seleccionar</option>
+          <option value="EFECTIVO">Efectivo</option>
+          <option value="TRANSFERENCIA">Transferencia</option>
+        </select>
+      </label>
+
+      <label id="waCampoFechaPago" class="hidden">
+        Fecha del primer pago
+        <input id="waFechaPagoInicial" readonly>
+      </label>
+
     </div>
 
     <fieldset class="delivery-choice wa-edit-delivery">
@@ -940,102 +972,99 @@
   </dialog>
 
 
-  <dialog id="modalCaja" class="wide-dialog">
-    <div class="dialog-header">
-      <div>
-        <h2>Reporte de caja</h2>
-        <p>Los ingresos se calculan con la fecha real de cada pago o abono.</p>
-      </div>
-      <button type="button" class="icon-button" data-close="modalCaja"><i data-close="modalCaja" class="fa-solid fa-xmark"></i></button>
+<main id="modalCaja" class="container hidden">
+  <div class="dialog-header">
+    <div>
+      <h2>Reportes</h2>
+      <p>Corte de caja, gastos y cuadre general.</p>
     </div>
 
-    <section class="cash-filters">
-      <label>
-        Periodo
-        <select id="periodoCaja">
-          <option value="DIA">Por día</option>
-          <option value="SEMANA">Por semana</option>
-          <option value="MES">Por mes</option>
-        </select>
-      </label>
+    <button
+      id="btnVolverPedidosCaja"
+      type="button"
+      class="secondary"
+    >
+      Volver a pedidos
+    </button>
+  </div>
 
-      <label id="campoFechaCaja">
-        Fecha
-        <input id="fechaCaja" type="date" />
-      </label>
+  <nav
+    class="reportes-tabs"
+    aria-label="Secciones del reporte"
+  >
+    <button
+      type="button"
+      class="reporte-tab active"
+      data-reporte="corte"
+      aria-pressed="true"
+    >
+      Corte de caja
+    </button>
 
-      <label id="campoSemanaCaja" class="hidden">
-        Semana
-        <input id="semanaCaja" type="week" />
-      </label>
+    <button
+      type="button"
+      class="reporte-tab"
+      data-reporte="gastos"
+      aria-pressed="false"
+    >
+      Gastos
+    </button>
 
-      <label id="campoMesCaja" class="hidden">
-        Mes
-        <input id="mesCaja" type="month" />
-      </label>
+    <button
+      type="button"
+      class="reporte-tab"
+      data-reporte="cuadre"
+      aria-pressed="false"
+    >
+      Cuadre general
+    </button>
+  </nav>
 
-      <label>
-        Método
-        <select id="metodoCaja">
-          <option value="">Todos</option>
-          <option value="EFECTIVO">Efectivo</option>
-          <option value="TRANSFERENCIA">Transferencia</option>
-        </select>
-      </label>
+  <section class="cash-filters">
+    <label>
+      Periodo
+      <select id="periodoCaja">
+        <option value="DIA">Por día</option>
+        <option value="SEMANA">Por semana</option>
+        <option value="MES">Por mes</option>
+      </select>
+    </label>
 
-      <button id="btnAplicarCaja" type="button" class="primary">Consultar</button>
-    </section>
+    <label id="campoFechaCaja">
+      Fecha
+      <input id="fechaCaja" type="date">
+    </label>
 
-    <section class="cash-summary">
-      <article>
-        <small>Ingresos</small>
-        <strong id="cajaTotal">$0.00</strong>
-      </article>
-      <article>
-        <small>Salidas y ajustes</small>
-        <strong id="cajaDevoluciones">$0.00</strong>
-      </article>
-      <article>
-        <small>Neto de caja</small>
-        <strong id="cajaNeto">$0.00</strong>
-      </article>
-      <article>
-        <small>Efectivo</small>
-        <strong id="cajaEfectivo">$0.00</strong>
-      </article>
-      <article>
-        <small>Transferencia</small>
-        <strong id="cajaTransferencia">$0.00</strong>
-      </article>
-      <article>
-        <small>Movimientos</small>
-        <strong id="cajaMovimientos">0</strong>
-      </article>
-    </section>
+    <label id="campoSemanaCaja" class="hidden">
+      Semana
+      <input id="semanaCaja" type="week">
+    </label>
 
-    <div class="cash-table-wrap">
-      <table class="cash-table">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Folio</th>
-            <th>Cliente</th>
-            <th>Tipo</th>
-            <th>Método</th>
-            <th>Importe</th>
-            <th>Vendedor</th>
-          </tr>
-        </thead>
-        <tbody id="tablaCaja"></tbody>
-      </table>
-      <div id="sinMovimientosCaja" class="empty hidden">No hay movimientos de caja en el periodo seleccionado.</div>
-    </div>
+    <label id="campoMesCaja" class="hidden">
+      Mes
+      <input id="mesCaja" type="month">
+    </label>
 
-    <div class="dialog-actions wrap">
-      <button id="btnExportarCaja" type="button" class="secondary">Exportar caja a Excel</button>
-      <button id="btnImprimirCaja" type="button" class="primary">Imprimir reporte</button>
-    </div>
-  </dialog>
+    <label>
+      Método
+      <select id="metodoCaja">
+        <option value="">Todos</option>
+        <option value="EFECTIVO">Efectivo</option>
+        <option value="TRANSFERENCIA">Transferencia</option>
+      </select>
+    </label>
+
+    <button
+      id="btnAplicarCaja"
+      type="button"
+      class="primary"
+    >
+      Consultar
+    </button>
+  </section>
+
+  <div id="contenidoReportes"></div>
+</main>
 
   <dialog id="modalPago">
     <form id="formPago">
@@ -1577,7 +1606,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="app.js?v=30-login-separado"></script>
+  <script type="module" src="app.js?v=31-correccion-pestanas"></script>
   </div>
 </body>
 </html>

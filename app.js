@@ -1106,6 +1106,27 @@ function totalPagado(s) {
   return pagosPedido(s).reduce((sum, pago) => sum + Number(pago.monto || 0), 0);
 }
 
+function pagosSolicitudWhatsapp(solicitud = {}) {
+  return Array.isArray(solicitud.pagos) ? solicitud.pagos : [];
+}
+
+function totalPagadoWhatsapp(solicitud = {}) {
+  return pagosSolicitudWhatsapp(solicitud)
+    .reduce((suma, pago) => suma + Number(pago.monto || 0), 0);
+}
+
+function saldoWhatsapp(solicitud = {}) {
+  return Math.max(0, Number(solicitud.monto || 0) - totalPagadoWhatsapp(solicitud));
+}
+
+function estatusPagoWhatsapp(solicitud = {}) {
+  const pagado = totalPagadoWhatsapp(solicitud);
+  const total = Number(solicitud.monto || 0);
+  if (pagado <= 0) return "PENDIENTE";
+  if (pagado + 0.001 >= total) return "PAGADO";
+  return solicitud.estatusPago === "K_EFECTIVO" ? "K_EFECTIVO" : "APARTADO";
+}
+
 
 function tieneProductosDisponiblesParaDevolver(s) {
   return (s?.productos || []).some(producto => {
@@ -1338,35 +1359,28 @@ function todosLosMovimientosCaja() {
       });
     }
 
-    const importeCancelacion = Number(
-      pedido.saldoFavorCancelacion ??
-      (
-        pedido.reversoCajaCancelacion
-          ? totalPagado(pedido)
-          : 0
-      )
-    );
+    // Una cancelación conserva los pagos recibidos para auditoría,
+    // pero no genera una salida automática ni un importe negativo.
+  }
 
-    if (
-      pedido.reversoCajaCancelacion &&
-      importeCancelacion > 0 &&
-      fechaISOValida(pedido.fechaCancelacion)
-    ) {
+  for (const solicitud of solicitudesWhatsapp) {
+    for (const pago of pagosSolicitudWhatsapp(solicitud)) {
+      if (!fechaISOValida(pago.fecha)) continue;
+
       movimientos.push({
-        tipo: "CANCELACION",
-        fecha: pedido.fechaCancelacion,
-        folio: pedido.folio || "",
-        cliente: pedido.nombreCliente || "",
-        metodo: "CANCELACION",
-        importe: -Math.abs(importeCancelacion),
-        vendedor: pedido.vendedor || "",
-        responsable: pedido.responsable || "",
-        ubicacion: pedido.ubicacion || "",
-        estadoPedido: textoEstado(pedido.estado),
-        estatusPago: textoPago(pedido.estatusPago),
-        concepto: pedido.motivoCancelacion === "APARTADO_VENCIDO"
-          ? "Cancelación por falta de liquidación"
-          : "Cancelación de pedido"
+        tipo: "INGRESO",
+        fecha: pago.fecha,
+        folio: solicitud.referencia || "",
+        cliente: solicitud.cliente || "",
+        metodo: pago.metodo || "",
+        importe: Number(pago.monto || 0),
+        vendedor: solicitud.vendedor || "",
+        responsable: solicitud.responsablePreparacion || solicitud.responsable || "",
+        ubicacion: solicitud.ubicacion || solicitud.puntoEntrega || "",
+        estadoPedido: ESTADOS_WHATSAPP_LABELS[normalizarEstadoWhatsapp(solicitud.estado)] || solicitud.estado || "",
+        estatusPago: textoPago(estatusPagoWhatsapp(solicitud)),
+        concepto: "Pago recibido · WhatsApp",
+        origen: "WHATSAPP"
       });
     }
   }
@@ -1451,29 +1465,100 @@ function consultarCaja() {
   }
 }
 
-function abrirReporteCaja() {
-  if (perfilActual?.rol !== "admin") return alert("Solo el administrador puede consultar la caja.");
-  const hoy = fechaSoloDia();
-  $("#fechaCaja").value = hoy;
-  $("#mesCaja").value = hoy.slice(0, 7);
+async function abrirReporteCaja() {
+  if (perfilActual?.rol !== "admin") {
+    alert("Solo el administrador puede consultar la caja.");
+    return;
+  }
 
-  const fechaHoy = new Date();
-  const fechaTemporal = new Date(Date.UTC(
-    fechaHoy.getFullYear(),
-    fechaHoy.getMonth(),
-    fechaHoy.getDate()
-  ));
-  const numeroDia = fechaTemporal.getUTCDay() || 7;
-  fechaTemporal.setUTCDate(fechaTemporal.getUTCDate() + 4 - numeroDia);
-  const inicioAnio = new Date(Date.UTC(fechaTemporal.getUTCFullYear(), 0, 1));
-  const numeroSemana = Math.ceil((((fechaTemporal - inicioAnio) / 86400000) + 1) / 7);
-  $("#semanaCaja").value = `${fechaTemporal.getUTCFullYear()}-W${String(numeroSemana).padStart(2, "0")}`;
+  const boton = $("#btnReporteCaja");
 
-  $("#periodoCaja").value = "DIA";
-  $("#metodoCaja").value = "";
-  actualizarCamposPeriodoCaja();
-  consultarCaja();
-  modalCaja.showModal();
+  if (boton.disabled) return;
+
+  boton.disabled = true;
+  boton.setAttribute("aria-busy", "true");
+
+  try {
+    const { cargarVistasReporte } = await import(
+      "./reportes/reportes.js?v=2"
+    );
+
+    await cargarVistasReporte({
+      exportarCaja,
+      imprimirCaja,
+      obtenerMovimientosCaja: todosLosMovimientosCaja,
+      obtenerRangoCaja: rangoCajaSeleccionado,
+      fechaEnRango,
+      moneda,
+      metodoPagoTexto
+    });
+
+    // Evita abrir el reporte si durante la carga
+    // se cerró la sesión o se eligió otra sección.
+    if (
+      perfilActual?.rol !== "admin" ||
+      !boton.classList.contains("active")
+    ) {
+      return;
+    }
+
+    const hoy = fechaSoloDia();
+
+    $("#fechaCaja").value = hoy;
+    $("#mesCaja").value = hoy.slice(0, 7);
+
+    const fechaHoy = new Date();
+
+    const fechaTemporal = new Date(Date.UTC(
+      fechaHoy.getFullYear(),
+      fechaHoy.getMonth(),
+      fechaHoy.getDate()
+    ));
+
+    const numeroDia = fechaTemporal.getUTCDay() || 7;
+
+    fechaTemporal.setUTCDate(
+      fechaTemporal.getUTCDate() + 4 - numeroDia
+    );
+
+    const inicioAnio = new Date(Date.UTC(
+      fechaTemporal.getUTCFullYear(),
+      0,
+      1
+    ));
+
+    const numeroSemana = Math.ceil(
+      (((fechaTemporal - inicioAnio) / 86400000) + 1) / 7
+    );
+
+    $("#semanaCaja").value =
+      `${fechaTemporal.getUTCFullYear()}-W` +
+      String(numeroSemana).padStart(2, "0");
+
+    $("#periodoCaja").value = "DIA";
+    $("#metodoCaja").value = "";
+
+    actualizarCamposPeriodoCaja();
+    consultarCaja();
+    cambiarPestanaReporte("corte");
+
+    $("#vistaPedidos").classList.add("hidden");
+    $("#vistaWhatsapp").classList.add("hidden");
+    modalCaja.classList.remove("hidden");
+
+  } catch (error) {
+    console.error("Error al cargar reportes:", error);
+
+    alert(
+      "No se pudo abrir Reportes. " +
+      "Comprueba que la carpeta reportes y sus cinco archivos " +
+      "estén junto a index.html."
+    );
+
+  } finally {
+    boton.disabled = false;
+    boton.removeAttribute("aria-busy");
+  }
 }
 
 function exportarCaja() {
@@ -4312,6 +4397,9 @@ function renderSolicitudesWhatsapp() {
         <div class="whatsapp-order-info">
           <div class="whatsapp-order-field"><span class="whatsapp-order-label">Productos</span><span class="whatsapp-order-value">${escapeHtml(resumenProductosWhatsappTexto(item))}</span></div>
           <div class="whatsapp-order-field"><span class="whatsapp-order-label">Precio</span><span class="whatsapp-order-value">${moneda(item.monto)}</span></div>
+          <div class="whatsapp-order-field"><span class="whatsapp-order-label">Pagado</span><span class="whatsapp-order-value">${moneda(totalPagadoWhatsapp(item))}</span></div>
+          <div class="whatsapp-order-field"><span class="whatsapp-order-label">Saldo</span><span class="whatsapp-order-value">${moneda(saldoWhatsapp(item))}</span></div>
+          <div class="whatsapp-order-field"><span class="whatsapp-order-label">Pago</span><span class="whatsapp-order-value">${escapeHtml(textoPago(estatusPagoWhatsapp(item)))}</span></div>
           <div class="whatsapp-order-field"><span class="whatsapp-order-label">Grupo</span><span class="whatsapp-order-value">${escapeHtml(item.grupo || "-")}</span></div>
           <div class="whatsapp-order-field"><span class="whatsapp-order-label">Responsable</span><span class="whatsapp-order-value">${escapeHtml(item.responsablePreparacion || "Sin asignar")}</span></div>
         </div>
@@ -4330,6 +4418,12 @@ function renderSolicitudesWhatsapp() {
             <i class="fa-solid fa-clock-rotate-left"></i>
             Ver historial
           </button>
+
+          ${
+            !solicitudWhatsappEstaCancelada(item) && saldoWhatsapp(item) > 0
+              ? `<button type="button" class="wa-btn-secondary" data-wa-pago="${escapeHtml(item.id)}"><i class="fa-solid fa-money-bill-wave"></i> Registrar pago</button>`
+              : ""
+          }
 
           ${
             esAdministradorWhatsapp() &&
@@ -4579,6 +4673,14 @@ async function cambiarEstadoWhatsapp(id, nuevoEstado) {
     return;
   }
 
+  if (estadoDestino === "finalizado" && saldoWhatsapp(solicitud) > 0.001) {
+    const motivoBloqueo =
+      `No puedes finalizar la solicitud porque falta pagar ${moneda(saldoWhatsapp(solicitud))}. Registra los pagos necesarios hasta liquidarla.`;
+    alert(motivoBloqueo);
+    await registrarIntentoBloqueadoWhatsapp(solicitud, estadoDestino, motivoBloqueo);
+    return;
+  }
+
   const errorOperativo =
     validarCambioOperativoWhatsapp(
       solicitud,
@@ -4652,11 +4754,13 @@ async function cambiarEstadoWhatsapp(id, nuevoEstado) {
 }
 
 function mostrarVistaPedidos() {
+  modalCaja.classList.add("hidden");
   $("#vistaWhatsapp")?.classList.add("hidden");
   $("#vistaPedidos")?.classList.remove("hidden");
 }
 
 function mostrarVistaWhatsapp() {
+  modalCaja.classList.add("hidden");
   $("#vistaPedidos")?.classList.add("hidden");
   $("#vistaWhatsapp")?.classList.remove("hidden");
   renderSolicitudesWhatsapp();
@@ -4667,6 +4771,13 @@ $("#btnBazar").addEventListener("click", () => { mostrarVistaPedidos(); abrirNue
 $("#btnVentaRapida").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("VR"); });
 
 $("#btnReporteCaja").addEventListener("click", abrirReporteCaja);
+$("#btnVolverPedidosCaja").addEventListener("click", () => {
+  mostrarVistaPedidos();
+  document
+    .querySelectorAll(".sidebar-link.active")
+    .forEach(elemento => elemento.classList.remove("active"));
+  $("#btnAlmacen").classList.add("active");
+});
 $("#btnExportar").addEventListener("click", exportarPedidos);
 $("#periodoCaja").addEventListener("change", () => {
   actualizarCamposPeriodoCaja();
@@ -4674,8 +4785,6 @@ $("#periodoCaja").addEventListener("change", () => {
 });
 $("#metodoCaja").addEventListener("change", consultarCaja);
 $("#btnAplicarCaja").addEventListener("click", consultarCaja);
-$("#btnExportarCaja").addEventListener("click", exportarCaja);
-$("#btnImprimirCaja").addEventListener("click", imprimirCaja);
 $("#btnAgregarProducto").addEventListener("click", agregarProducto);
 $("#productoClave").addEventListener("keydown", manejarLecturaCodigo);
 
@@ -8585,6 +8694,114 @@ const btnNuevaSolicitudWhatsApp =
 const modalWhatsappSolicitud =
   $("#modalWhatsappSolicitud");
 
+function actualizarCamposPagoWhatsapp() {
+  const estatus = $("#waEstatusPago")?.value || "";
+  const hayPago = estatus && estatus !== "PENDIENTE";
+  const requiereMonto = estatus === "APARTADO" || estatus === "K_EFECTIVO";
+
+  $("#waCampoMontoInicial")?.classList.toggle("hidden", !requiereMonto);
+  $("#waCampoMetodoPago")?.classList.toggle("hidden", !hayPago);
+  $("#waCampoFechaPago")?.classList.toggle("hidden", !hayPago);
+  if ($("#waMontoInicial")) $("#waMontoInicial").required = requiereMonto;
+  if ($("#waMetodoPagoInicial")) $("#waMetodoPagoInicial").required = hayPago;
+  if ($("#waFechaPagoInicial")) $("#waFechaPagoInicial").value = hayPago ? fechaSoloDia() : "";
+  if ($("#waEtiquetaMontoInicial")) {
+    $("#waEtiquetaMontoInicial").textContent = estatus === "K_EFECTIVO"
+      ? "Cantidad recibida en K efectivo"
+      : "Cantidad del primer apartado";
+  }
+  if (!requiereMonto && $("#waMontoInicial")) $("#waMontoInicial").value = "";
+}
+
+function asegurarModalPagoWhatsapp() {
+  if ($("#modalPagoWhatsapp")) return;
+  document.body.insertAdjacentHTML("beforeend", `
+    <dialog id="modalPagoWhatsapp">
+      <form id="formPagoWhatsapp">
+        <div class="dialog-header">
+          <div><h3>Registrar pago de WhatsApp</h3><p id="waPagoResumen"></p></div>
+          <button type="button" class="icon-button" data-close-pago-wa aria-label="Cerrar">×</button>
+        </div>
+        <div class="form-grid">
+          <label>Monto<input id="waPagoMonto" type="number" min="0.01" step="0.01" required></label>
+          <label>Método<select id="waPagoMetodo" required><option value="">Seleccionar</option><option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option></select></label>
+          <label>Fecha<input id="waPagoFecha" readonly required></label>
+        </div>
+        <div class="dialog-actions"><button type="button" class="ghost" data-close-pago-wa>Cancelar</button><button type="submit" class="primary">Guardar pago</button></div>
+      </form>
+    </dialog>`);
+
+  document.querySelectorAll("[data-close-pago-wa]").forEach(boton =>
+    boton.addEventListener("click", () => $("#modalPagoWhatsapp")?.close())
+  );
+
+  $("#formPagoWhatsapp")?.addEventListener("submit", registrarPagoWhatsapp);
+}
+
+let solicitudPagoWhatsappId = "";
+
+function abrirPagoWhatsapp(id) {
+  const solicitud = solicitudesWhatsapp.find(item => item.id === id);
+  if (!solicitud || solicitudWhatsappEstaCancelada(solicitud)) return;
+  asegurarModalPagoWhatsapp();
+  solicitudPagoWhatsappId = id;
+  const saldo = saldoWhatsapp(solicitud);
+  $("#formPagoWhatsapp").reset();
+  $("#waPagoMonto").value = saldo.toFixed(2);
+  $("#waPagoMonto").max = saldo.toFixed(2);
+  $("#waPagoFecha").value = fechaSoloDia();
+  $("#waPagoResumen").textContent = `${solicitud.referencia || "Solicitud"} · Saldo ${moneda(saldo)}`;
+  $("#modalPagoWhatsapp").showModal();
+}
+
+async function registrarPagoWhatsapp(event) {
+  event.preventDefault();
+  const solicitud = solicitudesWhatsapp.find(item => item.id === solicitudPagoWhatsappId);
+  if (!solicitud) return;
+  const monto = Number($("#waPagoMonto").value);
+  const metodo = $("#waPagoMetodo").value;
+  const saldoActual = saldoWhatsapp(solicitud);
+  if (!Number.isFinite(monto) || monto <= 0 || monto > saldoActual + 0.001) {
+    alert(`El pago debe ser mayor a cero y no superar el saldo de ${moneda(saldoActual)}.`);
+    return;
+  }
+
+  const pago = {
+    id: crypto.randomUUID(),
+    monto,
+    metodo,
+    fecha: $("#waPagoFecha").value,
+    fechaISO: new Date().toISOString(),
+    origen: "WHATSAPP",
+    registradoPorUid: usuarioActual?.uid || "",
+    registradoPorNombre: perfilActual?.nombre || usuarioActual?.email || "Usuario"
+  };
+  const nuevoPagado = totalPagadoWhatsapp(solicitud) + monto;
+  const nuevoEstatus = nuevoPagado + 0.001 >= Number(solicitud.monto || 0) ? "PAGADO" : "APARTADO";
+
+  try {
+    await updateDoc(doc(db, "solicitudes_whatsapp", solicitud.id), {
+      pagos: arrayUnion(pago),
+      estatusPago: nuevoEstatus,
+      montoApartado: nuevoPagado,
+      metodoPago: metodo,
+      fechaPago: pago.fecha,
+      ultimaActualizacion: serverTimestamp(),
+      historial: arrayUnion({
+        tipo: "PAGO_AGREGADO",
+        detalle: `${moneda(monto)} por ${metodoPagoTexto(metodo)}. Estatus: ${textoPago(nuevoEstatus)}`,
+        usuarioUid: usuarioActual?.uid || "",
+        usuarioNombre: perfilActual?.nombre || usuarioActual?.email || "Usuario",
+        fechaISO: new Date().toISOString()
+      })
+    });
+    $("#modalPagoWhatsapp").close();
+  } catch (error) {
+    console.error("Error al registrar pago de WhatsApp:", error);
+    alert("No se pudo registrar el pago.");
+  }
+}
+
 const formWhatsappSolicitud =
   $("#formWhatsappSolicitud");
 
@@ -8611,6 +8828,8 @@ btnNuevaSolicitudWhatsApp?.addEventListener(
     $("#waPuntoEntrega").value = "";
     $("#waUbicacion").value = "";
     $("#waCantidadProducto").value = "1";
+    if ($("#waEstatusPago")) $("#waEstatusPago").value = "PENDIENTE";
+    actualizarCamposPagoWhatsapp();
 
     actualizarCamposEntregaSolicitudWhatsapp("wa");
     renderProductosWhatsappNueva();
@@ -8619,6 +8838,8 @@ btnNuevaSolicitudWhatsApp?.addEventListener(
 
   }
 );
+
+$("#waEstatusPago")?.addEventListener("change", actualizarCamposPagoWhatsapp);
 
 document
   .querySelectorAll('[data-close="modalWhatsappSolicitud"]')
@@ -8772,6 +8993,40 @@ document
         productos
       );
 
+    const estatusPago = $("#waEstatusPago")?.value || "";
+    if (!estatusPago) {
+      alert("Selecciona el estatus de pago.");
+      $("#waEstatusPago")?.focus();
+      return;
+    }
+    const hayPagoInicial = estatusPago !== "PENDIENTE";
+    const metodoPagoInicial = $("#waMetodoPagoInicial")?.value || "";
+    const montoInicial = estatusPago === "PAGADO"
+      ? monto
+      : hayPagoInicial
+        ? Number($("#waMontoInicial")?.value || 0)
+        : 0;
+    if (hayPagoInicial && !metodoPagoInicial) {
+      alert("Selecciona el método del primer pago.");
+      $("#waMetodoPagoInicial")?.focus();
+      return;
+    }
+    if (hayPagoInicial && (!Number.isFinite(montoInicial) || montoInicial <= 0 || montoInicial > monto)) {
+      alert(`El primer pago debe ser mayor a cero y no superar el total de ${moneda(monto)}.`);
+      $("#waMontoInicial")?.focus();
+      return;
+    }
+    const pagoInicial = hayPagoInicial ? {
+      id: crypto.randomUUID(),
+      monto: montoInicial,
+      metodo: metodoPagoInicial,
+      fecha: $("#waFechaPagoInicial")?.value || fechaSoloDia(),
+      fechaISO: new Date().toISOString(),
+      origen: "WHATSAPP",
+      registradoPorUid: usuarioActual?.uid || "",
+      registradoPorNombre: perfilActual?.nombre || usuarioActual?.email || "Usuario"
+    } : null;
+
     const tipoEntrega =
       document.querySelector(
         'input[name="waTipoEntrega"]:checked'
@@ -8830,6 +9085,12 @@ document
 
       monto,
 
+      estatusPago,
+      montoApartado: montoInicial,
+      metodoPago: metodoPagoInicial,
+      fechaPago: pagoInicial?.fecha || "",
+      pagos: pagoInicial ? [pagoInicial] : [],
+
       tipoEntrega,
       puntoEntrega,
 
@@ -8875,6 +9136,21 @@ document
 
           monto:
             nuevaSolicitud.monto,
+
+          estatusPago:
+            nuevaSolicitud.estatusPago,
+
+          montoApartado:
+            nuevaSolicitud.montoApartado,
+
+          metodoPago:
+            nuevaSolicitud.metodoPago,
+
+          fechaPago:
+            nuevaSolicitud.fechaPago,
+
+          pagos:
+            nuevaSolicitud.pagos,
 
           tipoEntrega:
             nuevaSolicitud.tipoEntrega,
@@ -8976,6 +9252,11 @@ document.querySelectorAll(".whatsapp-stat-card").forEach(card => {
   });
 });
 $("#whatsappSolicitudesContainer")?.addEventListener("click", event => {
+  const botonPago = event.target.closest("[data-wa-pago]");
+  if (botonPago) {
+    abrirPagoWhatsapp(botonPago.dataset.waPago);
+    return;
+  }
   const boton = event.target.closest("[data-wa-id][data-wa-next]");
   if (!boton) return;
   cambiarEstadoWhatsapp(boton.dataset.waId, boton.dataset.waNext);
@@ -9033,3 +9314,34 @@ document.addEventListener(
 
   }
 );
+
+function cambiarPestanaReporte(pestana) {
+  const paneles = {
+    corte: "#panelCorteCaja",
+    gastos: "#panelGastosCaja",
+    cuadre: "#panelCuadreCaja"
+  };
+
+  if (!paneles[pestana]) return;
+
+  for (const [nombre, selector] of Object.entries(paneles)) {
+    $(selector).classList.toggle("hidden", nombre !== pestana);
+  }
+
+  document
+    .querySelectorAll("#modalCaja [data-reporte]")
+    .forEach(boton => {
+      const activa = boton.dataset.reporte === pestana;
+
+      boton.classList.toggle("active", activa);
+      boton.setAttribute("aria-pressed", String(activa));
+    });
+}
+
+document
+  .querySelectorAll("#modalCaja [data-reporte]")
+  .forEach(boton => {
+    boton.addEventListener("click", () => {
+      cambiarPestanaReporte(boton.dataset.reporte);
+    });
+  });

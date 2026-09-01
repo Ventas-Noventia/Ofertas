@@ -1,0 +1,178 @@
+<section id="panelGastosCaja" class="hidden">
+  <div class="gastos-header">
+    <div>
+      <h2>Gastos</h2>
+      <p>Registra y consulta los gastos realizados.</p>
+    </div>
+
+    <button
+      id="btnMostrarFormularioGasto"
+      type="button"
+      class="primary"
+    >
+      + Registrar gasto
+    </button>
+  </div>
+
+  <section id="formularioGastoCaja" class="gasto-form-card hidden">
+    <form id="formGasto">
+      <div class="form-grid">
+        <label>
+          Concepto
+          <select id="conceptoGasto" required>
+            <option value="">Selecciona un concepto</option>
+            <option value="Limpieza">Limpieza</option>
+            <option value="Luz">Luz</option>
+            <option value="Internet">Internet</option>
+            <option value="Accesorios de papelería">
+              Accesorios de papelería
+            </option>
+            <option value="__OTRO__">Otro</option>
+          </select>
+        </label>
+
+        <div id="campoOtroConceptoGasto" class="hidden">
+          <label>
+            Escribe el concepto
+            <input
+              id="otroConceptoGasto"
+              type="text"
+              maxlength="100"
+              placeholder="Ej. Transporte"
+            >
+          </label>
+
+          <label class="check gasto-check">
+            <input id="guardarConceptoGasto" type="checkbox">
+            <span>Guardar en el listado</span>
+          </label>
+        </div>
+
+        <label>
+          Fecha automática
+          <input
+            id="fechaGastoActual"
+            type="text"
+            readonly
+          >
+        </label>
+
+        <label>
+          Monto
+          <input
+            id="montoGasto"
+            type="number"
+            min="0.01"
+            max="99999999.99"
+            step="0.01"
+            placeholder="0.00"
+            required
+          >
+        </label>
+
+        <label>
+          Tipo de pago
+          <select id="metodoGasto" required>
+            <option value="">Selecciona el tipo de pago</option>
+            <option value="EFECTIVO">Efectivo</option>
+            <option value="TRANSFERENCIA">Transferencia</option>
+          </select>
+        </label>
+
+        <label>
+          Comprobante opcional
+          <input
+            id="comprobanteGasto"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+          >
+          <small>
+            JPG, PNG o WebP. Máximo 10 MB.
+          </small>
+        </label>
+      </div>
+
+      <div class="dialog-actions">
+        <button
+          id="btnCancelarGasto"
+          type="button"
+          class="secondary"
+        >
+          Cancelar
+        </button>
+
+        <button
+          id="btnGuardarGasto"
+          type="submit"
+          class="primary"
+        >
+          Guardar gasto
+        </button>
+      </div>
+    </form>
+
+    <p id="mensajeGasto" role="status"></p>
+  </section>
+
+  <section class="cash-summary gastos-summary">
+    <article>
+      <small>Total de gastos</small>
+      <strong id="totalGastosRegistrados">$0.00</strong>
+    </article>
+
+    <article>
+      <small>Gastos en efectivo</small>
+      <strong id="totalGastosEfectivo">$0.00</strong>
+    </article>
+
+    <article>
+      <small>Gastos por transferencia</small>
+      <strong id="totalGastosTransferencia">$0.00</strong>
+    </article>
+
+    <article>
+      <small>Registros</small>
+      <strong id="cantidadGastos">0</strong>
+    </article>
+  </section>
+
+  <div class="cash-table-wrap">
+    <table class="cash-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Fecha</th>
+          <th>Concepto</th>
+          <th>Tipo de pago</th>
+          <th>Monto</th>
+          <th>Comprobante</th>
+        </tr>
+      </thead>
+
+      <tbody id="tablaGastos"></tbody>
+    </table>
+
+    <div id="sinGastos" class="empty">
+      No hay gastos registrados.
+    </div>
+  </div>
+
+  <dialog id="visorComprobanteGasto">
+    <div class="dialog-header">
+      <h2>Comprobante</h2>
+
+      <button
+        id="btnCerrarComprobanteGasto"
+        type="button"
+        class="secondary"
+      >
+        Cerrar
+      </button>
+    </div>
+
+    <img
+      id="imagenComprobanteGasto"
+      alt="Comprobante del gasto"
+    >
+  </dialog>
+</section>

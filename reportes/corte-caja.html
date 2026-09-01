@@ -1,0 +1,73 @@
+<section id="panelCorteCaja">
+  <section class="cash-summary">
+    <article>
+      <small>Ingresos</small>
+      <strong id="cajaTotal">$0.00</strong>
+    </article>
+
+    <article>
+      <small>Salidas y ajustes</small>
+      <strong id="cajaDevoluciones">$0.00</strong>
+    </article>
+
+    <article>
+      <small>Neto de caja</small>
+      <strong id="cajaNeto">$0.00</strong>
+    </article>
+
+    <article>
+      <small>Efectivo</small>
+      <strong id="cajaEfectivo">$0.00</strong>
+    </article>
+
+    <article>
+      <small>Transferencia</small>
+      <strong id="cajaTransferencia">$0.00</strong>
+    </article>
+
+    <article>
+      <small>Movimientos</small>
+      <strong id="cajaMovimientos">0</strong>
+    </article>
+  </section>
+
+  <div class="cash-table-wrap">
+    <table class="cash-table">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Folio</th>
+          <th>Cliente</th>
+          <th>Tipo</th>
+          <th>Método</th>
+          <th>Importe</th>
+          <th>Vendedor</th>
+        </tr>
+      </thead>
+
+      <tbody id="tablaCaja"></tbody>
+    </table>
+
+    <div id="sinMovimientosCaja" class="empty hidden">
+      No hay movimientos de caja en el periodo seleccionado.
+    </div>
+  </div>
+
+  <div class="dialog-actions wrap">
+    <button
+      id="btnExportarCaja"
+      type="button"
+      class="secondary"
+    >
+      Exportar caja a Excel
+    </button>
+
+    <button
+      id="btnImprimirCaja"
+      type="button"
+      class="primary"
+    >
+      Imprimir reporte
+    </button>
+  </div>
+</section>
