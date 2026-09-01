@@ -2479,3 +2479,134 @@ dialog { border: 1px solid rgba(7, 59, 76, .08); box-shadow: 0 28px 80px rgba(4,
   outline: 3px solid #9fdaca;
   outline-offset: 2px;
 }
+
+form#formWhatsappSolicitud {
+    padding: 20px;
+}
+
+select#waStatusFilter {
+    width: 50%;
+}
+
+@media screen and (max-width:765px) {
+  select#waStatusFilter {
+    width: 100%;
+  }
+}
+
+span.grand-total {
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.order-total.order-total-breakdown.wa-order-total span {
+    display: flex;
+    align-items: center;
+  }
+  
+input, select, textarea {
+  min-height: 35px !important;
+}
+
+#bloqueTipoEntrega label input,
+.delivery-choice.wa-edit-delivery label input {
+    min-height: 10px !important;
+}
+
+button.wa-btn-cancelar {
+    background: red;
+    color: #f5f5f5;
+    padding: 10px;
+    display: block;
+    margin: 10px auto;
+}
+
+.item-collection-btn {
+    display: flex;
+    gap: 7px;
+    justify-content: center;
+}
+
+.item-collection-btn .wa-btn-whatsapp{
+  background-color: #25d366;
+  color: #075e54;
+}
+
+.item-collection-btn .wa-btn-editar{
+  background-color: #14aedc;
+  color: #075e54;
+}
+
+.item-collection-btn .wa-btn-historial{
+  background-color: #a811df;
+  color: #f5f5f5;
+}
+  
+.wa-btn-incidencia{
+  margin: 10px 0;
+}
+
+#modalWhatsappSolicitud .wa-product-entry, #modalEditarSolicitudWhatsapp .wa-product-entry {
+    grid-template-columns: 120px minmax(180px, 1fr) 120px 90px 110px auto;
+    gap: 10px;
+    align-items: end;
+    margin: 8px 0 14px;
+}
+
+/* .wa-product-line{
+  display: flex;
+    align-items: center;
+    justify-content: space-between;
+} */
+
+/* Editor de producto WhatsApp en una sola línea */
+.wa-product-line.product-row-editing {
+  display: grid;
+  grid-template-columns:
+    minmax(100px, 0.8fr)   /* ID */
+    minmax(180px, 2fr)     /* Producto */
+    minmax(100px, 0.8fr)   /* Precio */
+    minmax(80px, 0.6fr)    /* Cantidad */
+    minmax(100px, 0.7fr)   /* Descuento */
+    auto;                  /* Botones */
+
+  gap: 12px;
+  align-items: end;
+  width: 100%;
+}
+
+/* Cada label mantiene título arriba e input abajo */
+.wa-product-line.product-row-editing > label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+}
+
+/* Inputs ocupan únicamente su columna */
+.wa-product-line.product-row-editing input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Guardar y Cancelar juntos */
+.wa-product-line.product-row-editing .product-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+/* Evita que .grow altere el grid */
+.wa-product-line.product-row-editing .grow {
+  width: auto;
+  flex: none;
+}
+
+.wa-product-line:nth-child(1) {
+    background: #f8f8f8;
+    padding: 3px 10px;
+    border-radius: 10px;
+}

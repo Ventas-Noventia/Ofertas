@@ -112,7 +112,13 @@ function escapeHtml(valor = "") {
   })[c]);
 }
 
+const { data, error } = await supabaseClient
+  .from("inventario_devoluciones")
+  .select("*")
+  .limit(1);
 
+console.log("DATA:", data);
+console.log("ERROR:", error);
 
 
 document.addEventListener("click", event => {
@@ -1828,10 +1834,6 @@ async function cargarCatalogoProductos() {
 
       lista.push(...data);
 
-      console.log(
-        `Productos descargados: ${lista.length.toLocaleString("es-MX")}`
-      );
-
       if (data.length < TAMANO_LOTE) {
         seguirCargando = false;
       } else {
@@ -2990,7 +2992,7 @@ function renderProductosNuevo() {
             class="secondary"
             data-main-editar-producto="${escapeHtml(p.idLinea)}"
           >
-            Editar
+            <i class="fa-solid fa-pen-to-square"></i>
           </button>
 
           <button
@@ -2998,7 +3000,7 @@ function renderProductosNuevo() {
             class="danger"
             data-main-quitar-producto="${escapeHtml(p.idLinea)}"
           >
-            Quitar
+            <i class="fa-solid fa-trash"></i>
           </button>
         </div>
       `;
@@ -5419,6 +5421,15 @@ ${productosWhatsappMensaje(solicitud)}
 Ubicación: ${solicitud.ubicacion || "-"}
 
 Te avisaremos cuando esté preparado.
+
+
+
+Hola ${cliente} gracias por confiar en Noventia, Tu pedido esta confirmado y queda pendiente de preparacion
+Referencia: ${solicitud.referencia || ""}
+Productos:${productosWhatsappMensaje(solicitud)}
+Ubicación: ${solicitud.ubicacion || "-"}
+Te avisaremos por aquí en cuanto este listo. ¡Gracias por tu compra!
+
     `.trim();
 
     break;
@@ -5455,6 +5466,14 @@ ${productosWhatsappMensaje(solicitud)}
 Ubicación de entrega: ${solicitud.ubicacion || "-"}
 
 Quedamos atentos para coordinar tu entrega.
+
+¡Hola, ${solicitud.cliente || ""} 👋
+¡Excelente noticia! Tu pedido ${solicitud.referencia || ""} ya está listo para ser entregado.
+Resumen de tu pedido:
+${productosWhatsappMensaje(solicitud)}
+Ubicación de entrega: ${solicitud.ubicacion || "-"}
+¡Gracias por tu compra y sigue descubriendo nuevos productos con Noventia! ✨
+
     `.trim();
 
     break;
@@ -6083,6 +6102,95 @@ function calcularTotalProductosWhatsapp(productos = []) {
   );
 }
 
+function tipoDescuentoWhatsappDesdeValores(tipo = "NINGUNO", descuentoGeneral = 0, productos = []) {
+  if (["TOTAL", "PRODUCTO"].includes(tipo)) return tipo;
+  if (porcentajeDescuento(descuentoGeneral)) return "TOTAL";
+  if ((productos || []).some(producto => porcentajeDescuento(producto.descuentoPorcentaje))) return "PRODUCTO";
+  return "NINGUNO";
+}
+
+function precioUnitarioWhatsappConDescuento(producto, tipo = "NINGUNO", descuentoGeneral = 0) {
+  const precio = Number(producto.precio || 0);
+  const descuento = tipo === "TOTAL"
+    ? porcentajeDescuento(descuentoGeneral)
+    : tipo === "PRODUCTO"
+      ? porcentajeDescuento(producto.descuentoPorcentaje)
+      : 0;
+
+  return Math.round(precio * (1 - descuento / 100) * 100) / 100;
+}
+
+function resumenDescuentoWhatsapp(productos = [], tipo = "NINGUNO", descuentoGeneral = 0) {
+  const subtotalOriginal = calcularTotalProductosWhatsapp(productos);
+  const subtotalConDescuento = (productos || []).reduce(
+    (total, producto) =>
+      total +
+      Number(producto.cantidad || 0) *
+      precioUnitarioWhatsappConDescuento(producto, tipo, descuentoGeneral),
+    0
+  );
+
+  return {
+    subtotalOriginal,
+    subtotalConDescuento,
+    montoDescuento: Math.max(0, subtotalOriginal - subtotalConDescuento)
+  };
+}
+
+function tipoDescuentoWhatsappActual(edicion = false) {
+  const selector = edicion ? "#waEditarTipoDescuento" : "#waTipoDescuento";
+  return $(selector)?.value || "NINGUNO";
+}
+
+function descuentoGeneralWhatsappActual(edicion = false) {
+  const selector = edicion ? "#waEditarDescuentoGeneral" : "#waDescuentoGeneral";
+  return Number($(selector)?.value || 0);
+}
+
+function validarDescuentoWhatsapp(productos = [], edicion = false) {
+  const tipo = tipoDescuentoWhatsappActual(edicion);
+  const descuentoGeneral = descuentoGeneralWhatsappActual(edicion);
+
+  if (tipo === "TOTAL" && !porcentajeDescuento(descuentoGeneral)) {
+    alert("El descuento general debe ser un número entero entre 1 y 99.");
+    $(edicion ? "#waEditarDescuentoGeneral" : "#waDescuentoGeneral")?.focus();
+    return false;
+  }
+
+  if (
+    tipo === "PRODUCTO" &&
+    productos.some(producto => {
+      const valor = Number(producto.descuentoPorcentaje || 0);
+      return !Number.isInteger(valor) || valor < 0 || valor > 99;
+    })
+  ) {
+    alert("Los descuentos por producto deben ser números enteros entre 1 y 99, o 0 para no aplicar.");
+    return false;
+  }
+
+  return true;
+}
+
+function actualizarCamposDescuentoWhatsapp(edicion = false) {
+  const tipo = tipoDescuentoWhatsappActual(edicion);
+  const campoGeneral = $(edicion ? "#waEditarCampoDescuentoGeneral" : "#waCampoDescuentoGeneral");
+  const campoProducto = $(edicion ? "#waEditarCampoDescuentoProducto" : "#waCampoDescuentoProducto");
+
+  campoGeneral?.classList.toggle("hidden", tipo !== "TOTAL");
+  campoProducto?.classList.toggle("hidden", tipo !== "PRODUCTO");
+
+  if (tipo !== "TOTAL") {
+    const input = $(edicion ? "#waEditarDescuentoGeneral" : "#waDescuentoGeneral");
+    if (input) input.value = "";
+  }
+
+  if (edicion) {
+    renderProductosWhatsappEdicion();
+  } else {
+    renderProductosWhatsappNueva();
+  }
+}
+
 function resumenProductosWhatsappTexto(solicitud = {}) {
   const productos =
     obtenerProductosWhatsapp(solicitud);
@@ -6206,11 +6314,11 @@ function buscarProductoCatalogoWhatsapp({
     $(nombreCampo).value = "";
     $(precioCampo).value = "";
 
-    mostrarMensajeProductoWhatsapp(
-      idCampo,
-      "ID no encontrado. Puedes capturar nombre y precio manualmente.",
-      "not-found"
-    );
+    // mostrarMensajeProductoWhatsapp(
+    //   idCampo,
+    //   "ID no encontrado. Puedes capturar nombre y precio manualmente.",
+    //   "not-found"
+    // );
 
     $(nombreCampo)?.focus();
 
@@ -6448,6 +6556,24 @@ function renderProductosWhatsappNueva() {
                       >
                     </label>
 
+                    ${
+                      tipoDescuentoWhatsappActual(false) === "PRODUCTO"
+                        ? `
+                          <label>
+                            Descuento %
+                            <input
+                              data-wa-inline-descuento
+                              type="number"
+                              min="0"
+                              max="99"
+                              step="1"
+                              value="${Number(producto.descuentoPorcentaje || 0)}"
+                            >
+                          </label>
+                        `
+                        : ""
+                    }
+
                     <div class="product-edit-actions">
                       <button
                         type="button"
@@ -6480,11 +6606,21 @@ function renderProductosWhatsappNueva() {
 
                   <span>${Number(producto.cantidad)} pza.</span>
                   <span>${moneda(producto.precio)}</span>
+                  ${
+                    tipoDescuentoWhatsappActual(false) === "PRODUCTO" &&
+                    porcentajeDescuento(producto.descuentoPorcentaje)
+                      ? `<span>-${porcentajeDescuento(producto.descuentoPorcentaje)}%</span>`
+                      : ""
+                  }
 
                   <strong>
                     ${moneda(
                       Number(producto.cantidad) *
-                      Number(producto.precio)
+                      precioUnitarioWhatsappConDescuento(
+                        producto,
+                        tipoDescuentoWhatsappActual(false),
+                        descuentoGeneralWhatsappActual(false)
+                      )
                     )}
                   </strong>
 
@@ -6494,7 +6630,7 @@ function renderProductosWhatsappNueva() {
                       class="secondary"
                       data-wa-editar-inline="${escapeHtml(producto.idLinea)}"
                     >
-                      Editar
+                      <i class="fa-solid fa-pen-to-square"></i>
                     </button>
 
                     <button
@@ -6502,7 +6638,7 @@ function renderProductosWhatsappNueva() {
                       class="ghost wa-remove-product"
                       data-wa-quitar-producto="${escapeHtml(producto.idLinea)}"
                     >
-                      Eliminar
+                      <i class="fa-solid fa-trash"></i>
                     </button>
                   </div>
                 </div>
@@ -6512,13 +6648,22 @@ function renderProductosWhatsappNueva() {
         : `<div class="empty wa-products-empty">Aún no agregas productos.</div>`;
   }
 
+  const resumen = resumenDescuentoWhatsapp(
+    productosWhatsappNueva,
+    tipoDescuentoWhatsappActual(false),
+    descuentoGeneralWhatsappActual(false)
+  );
+
+  if ($("#waSubtotalOriginal")) {
+    $("#waSubtotalOriginal").textContent = moneda(resumen.subtotalOriginal);
+  }
+
+  if ($("#waMontoDescuento")) {
+    $("#waMontoDescuento").textContent = `-${moneda(resumen.montoDescuento)}`;
+  }
+
   if (total) {
-    total.textContent =
-      moneda(
-        calcularTotalProductosWhatsapp(
-          productosWhatsappNueva
-        )
-      );
+    total.textContent = moneda(resumen.subtotalConDescuento);
   }
 }
 
@@ -6703,6 +6848,19 @@ function agregarProductoWhatsappNueva(
       $("#waCantidadProducto")?.value || 1
     );
 
+  const descuento =
+    Number($("#waDescuentoProducto")?.value || 0);
+
+  if (
+    !Number.isInteger(descuento) ||
+    descuento < 0 ||
+    descuento > 99
+  ) {
+    alert("El descuento debe ser un número entero entre 1 y 99, o 0 para no aplicar.");
+    $("#waDescuentoProducto")?.focus();
+    return false;
+  }
+
   if (
     !validarCapturaWhatsapp({
       idProducto,
@@ -6729,6 +6887,9 @@ function agregarProductoWhatsappNueva(
 
   if (existente) {
     existente.cantidad += cantidad;
+    if (tipoDescuentoWhatsappActual(false) === "PRODUCTO") {
+      existente.descuentoPorcentaje = descuento;
+    }
   } else {
     productosWhatsappNueva.push({
       idLinea: crypto.randomUUID(),
@@ -6736,7 +6897,11 @@ function agregarProductoWhatsappNueva(
       clave: idProducto,
       nombre,
       precio,
-      cantidad
+      cantidad,
+      descuentoPorcentaje:
+        tipoDescuentoWhatsappActual(false) === "PRODUCTO"
+          ? descuento
+          : 0
     });
   }
 
@@ -6745,6 +6910,7 @@ function agregarProductoWhatsappNueva(
     $("#waProducto").value = "";
     $("#waPrecio").value = "";
     $("#waCantidadProducto").value = "1";
+    if ($("#waDescuentoProducto")) $("#waDescuentoProducto").value = "";
 
     waProductoCapturaActualId = "";
 
@@ -6815,6 +6981,24 @@ function renderProductosWhatsappEdicion() {
                       >
                     </label>
 
+                    ${
+                      tipoDescuentoWhatsappActual(true) === "PRODUCTO"
+                        ? `
+                          <label>
+                            Descuento %
+                            <input
+                              data-wa-edit-inline-descuento
+                              type="number"
+                              min="0"
+                              max="99"
+                              step="1"
+                              value="${Number(producto.descuentoPorcentaje || 0)}"
+                            >
+                          </label>
+                        `
+                        : ""
+                    }
+
                     <div class="product-edit-actions">
                       <button
                         type="button"
@@ -6843,9 +7027,19 @@ function renderProductosWhatsappEdicion() {
                     <small>
                       ID: ${escapeHtml(producto.idProducto || producto.clave || "Sin ID")} ·
                       ${Number(producto.cantidad)} × ${moneda(producto.precio)}
+                      ${
+                        tipoDescuentoWhatsappActual(true) === "PRODUCTO" &&
+                        porcentajeDescuento(producto.descuentoPorcentaje)
+                          ? ` · Desc. ${porcentajeDescuento(producto.descuentoPorcentaje)}%`
+                          : ""
+                      }
                       = ${moneda(
                         Number(producto.cantidad) *
-                        Number(producto.precio)
+                        precioUnitarioWhatsappConDescuento(
+                          producto,
+                          tipoDescuentoWhatsappActual(true),
+                          descuentoGeneralWhatsappActual(true)
+                        )
                       )}
                     </small>
                   </div>
@@ -6856,14 +7050,14 @@ function renderProductosWhatsappEdicion() {
                       class="secondary"
                       data-wa-edit-editar-inline="${escapeHtml(producto.idLinea)}"
                     >
-                      Editar
+                      <i class="fa-solid fa-pen-to-square"></i>
                     </button>
 
                     <button
                       type="button"
                       data-wa-editar-quitar-producto="${escapeHtml(producto.idLinea)}"
                     >
-                      Eliminar
+                      <i class="fa-solid fa-trash"></i>
                     </button>
                   </div>
                 </div>
@@ -6873,13 +7067,22 @@ function renderProductosWhatsappEdicion() {
         : `<div class="empty">Agrega al menos un producto.</div>`;
   }
 
+  const resumen = resumenDescuentoWhatsapp(
+    productosWhatsappEdicion,
+    tipoDescuentoWhatsappActual(true),
+    descuentoGeneralWhatsappActual(true)
+  );
+
+  if ($("#waEditarSubtotalOriginal")) {
+    $("#waEditarSubtotalOriginal").textContent = moneda(resumen.subtotalOriginal);
+  }
+
+  if ($("#waEditarMontoDescuento")) {
+    $("#waEditarMontoDescuento").textContent = `-${moneda(resumen.montoDescuento)}`;
+  }
+
   if (total) {
-    total.textContent =
-      moneda(
-        calcularTotalProductosWhatsapp(
-          productosWhatsappEdicion
-        )
-      );
+    total.textContent = moneda(resumen.subtotalConDescuento);
   }
 }
 
@@ -6924,6 +7127,19 @@ function agregarProductoWhatsappEdicion(
         ?.value || 1
     );
 
+  const descuento =
+    Number($("#waEditarDescuentoProducto")?.value || 0);
+
+  if (
+    !Number.isInteger(descuento) ||
+    descuento < 0 ||
+    descuento > 99
+  ) {
+    alert("El descuento debe ser un número entero entre 1 y 99, o 0 para no aplicar.");
+    $("#waEditarDescuentoProducto")?.focus();
+    return false;
+  }
+
   if (
     !validarCapturaWhatsapp({
       idProducto,
@@ -6950,6 +7166,9 @@ function agregarProductoWhatsappEdicion(
 
   if (existente) {
     existente.cantidad += cantidad;
+    if (tipoDescuentoWhatsappActual(true) === "PRODUCTO") {
+      existente.descuentoPorcentaje = descuento;
+    }
   } else {
     productosWhatsappEdicion.push({
       idLinea: crypto.randomUUID(),
@@ -6957,7 +7176,11 @@ function agregarProductoWhatsappEdicion(
       clave: idProducto,
       nombre,
       precio,
-      cantidad
+      cantidad,
+      descuentoPorcentaje:
+        tipoDescuentoWhatsappActual(true) === "PRODUCTO"
+          ? descuento
+          : 0
     });
   }
 
@@ -6966,6 +7189,7 @@ function agregarProductoWhatsappEdicion(
     $("#waEditarProductoNombre").value = "";
     $("#waEditarProductoPrecio").value = "";
     $("#waEditarProductoCantidad").value = "1";
+    if ($("#waEditarDescuentoProducto")) $("#waEditarDescuentoProducto").value = "";
 
     waProductoEdicionCapturaActualId = "";
   }
@@ -7034,6 +7258,14 @@ document.addEventListener(
             ?.value
         );
 
+      const descuento =
+        tipoDescuentoWhatsappActual(false) === "PRODUCTO"
+          ? Number(
+              fila.querySelector("[data-wa-inline-descuento]")
+                ?.value || 0
+            )
+          : 0;
+
       if (
         !validarCapturaWhatsapp({
           idProducto,
@@ -7045,11 +7277,25 @@ document.addEventListener(
         return;
       }
 
+      if (
+        !Number.isInteger(descuento) ||
+        descuento < 0 ||
+        descuento > 99
+      ) {
+        alert("El descuento debe ser un número entero entre 1 y 99, o 0 para no aplicar.");
+        fila.querySelector("[data-wa-inline-descuento]")?.focus();
+        return;
+      }
+
       producto.idProducto = idProducto;
       producto.clave = idProducto;
       producto.nombre = nombre;
       producto.precio = precio;
       producto.cantidad = cantidad;
+      producto.descuentoPorcentaje =
+        tipoDescuentoWhatsappActual(false) === "PRODUCTO"
+          ? descuento
+          : 0;
 
       waProductoNuevoEditandoId = "";
 
@@ -7123,6 +7369,14 @@ document.addEventListener(
             ?.value
         );
 
+      const descuento =
+        tipoDescuentoWhatsappActual(true) === "PRODUCTO"
+          ? Number(
+              fila.querySelector("[data-wa-edit-inline-descuento]")
+                ?.value || 0
+            )
+          : 0;
+
       if (
         !validarCapturaWhatsapp({
           idProducto,
@@ -7134,11 +7388,25 @@ document.addEventListener(
         return;
       }
 
+      if (
+        !Number.isInteger(descuento) ||
+        descuento < 0 ||
+        descuento > 99
+      ) {
+        alert("El descuento debe ser un número entero entre 1 y 99, o 0 para no aplicar.");
+        fila.querySelector("[data-wa-edit-inline-descuento]")?.focus();
+        return;
+      }
+
       producto.idProducto = idProducto;
       producto.clave = idProducto;
       producto.nombre = nombre;
       producto.precio = precio;
       producto.cantidad = cantidad;
+      producto.descuentoPorcentaje =
+        tipoDescuentoWhatsappActual(true) === "PRODUCTO"
+          ? descuento
+          : 0;
 
       waProductoEdicionEditandoId = "";
 
@@ -7302,6 +7570,25 @@ function asegurarModalEditarSolicitudWhatsapp() {
           </div>
         </div>
 
+        <section class="discount-controls">
+          <label>
+            Descuento (opcional)
+            <select id="waEditarTipoDescuento">
+              <option value="NINGUNO">Sin descuento</option>
+              <option value="TOTAL">Descuento sobre todos los productos</option>
+              <option value="PRODUCTO">Descuento diferente por producto</option>
+            </select>
+          </label>
+
+          <label id="waEditarCampoDescuentoGeneral" class="hidden">
+            Porcentaje general
+            <span class="percent-input">
+              <input id="waEditarDescuentoGeneral" type="number" min="1" max="99" step="1" placeholder="1 a 99">
+              <b>%</b>
+            </span>
+          </label>
+        </section>
+
         <div class="product-entry wa-product-entry">
           <label>
             ID producto
@@ -7343,6 +7630,14 @@ function asegurarModalEditarSolicitudWhatsapp() {
             >
           </label>
 
+          <label id="waEditarCampoDescuentoProducto" class="discount-product-field hidden">
+            Descuento
+            <span class="percent-input">
+              <input id="waEditarDescuentoProducto" type="number" min="1" max="99" step="1" placeholder="0">
+              <b>%</b>
+            </span>
+          </label>
+
           <button
             type="button"
             id="btnWaEditarAgregarProducto"
@@ -7357,9 +7652,10 @@ function asegurarModalEditarSolicitudWhatsapp() {
           class="product-list wa-product-list"
         ></div>
 
-        <div class="order-total wa-order-total">
-          <span>Total</span>
-          <strong id="waEditarProductosTotal">$0.00</strong>
+        <div class="order-total order-total-breakdown wa-order-total">
+          <span>Subtotal original: <strong id="waEditarSubtotalOriginal">$0.00</strong></span>
+          <span>Descuento: <strong id="waEditarMontoDescuento">-$0.00</strong></span>
+          <span class="grand-total">Total: <strong id="waEditarProductosTotal">$0.00</strong></span>
         </div>
       </section>
 
@@ -7382,6 +7678,16 @@ function asegurarModalEditarSolicitudWhatsapp() {
   document.body.appendChild(modal);
 
   llenarPuntosEntregaWhatsapp($("#waEditarPuntoEntrega"));
+
+  $("#waEditarTipoDescuento")?.addEventListener(
+    "change",
+    () => actualizarCamposDescuentoWhatsapp(true)
+  );
+
+  $("#waEditarDescuentoGeneral")?.addEventListener(
+    "input",
+    () => renderProductosWhatsappEdicion()
+  );
 
   modal.addEventListener("click", event => {
     if (
@@ -7619,6 +7925,23 @@ function abrirEditarSolicitudWhatsapp(id) {
     solicitud.responsablePreparacion ||
     "";
 
+  const tipoDescuentoActual =
+    tipoDescuentoWhatsappDesdeValores(
+      solicitud.tipoDescuento || "NINGUNO",
+      solicitud.descuentoGeneral || 0,
+      productosWhatsappEdicion
+    );
+
+  $("#waEditarTipoDescuento").value =
+    tipoDescuentoActual;
+
+  $("#waEditarDescuentoGeneral").value =
+    tipoDescuentoActual === "TOTAL"
+      ? porcentajeDescuento(solicitud.descuentoGeneral)
+      : "";
+
+  actualizarCamposDescuentoWhatsapp(true);
+
   $("#waEditarProductoNombre").value = "";
   $("#waEditarProductoPrecio").value = "";
   $("#waEditarProductoCantidad").value = "1";
@@ -7682,10 +8005,34 @@ async function guardarEdicionSolicitudWhatsapp(
     return;
   }
 
-  const monto =
-    calcularTotalProductosWhatsapp(
-      productosWhatsappEdicion
+  if (!validarDescuentoWhatsapp(productosWhatsappEdicion, true)) {
+    return;
+  }
+
+  const tipoDescuento =
+    tipoDescuentoWhatsappActual(true);
+
+  const descuentoGeneral =
+    tipoDescuento === "TOTAL"
+      ? porcentajeDescuento(descuentoGeneralWhatsappActual(true))
+      : 0;
+
+  const resumenDescuentoActual =
+    resumenDescuentoWhatsapp(
+      productosWhatsappEdicion,
+      tipoDescuento,
+      descuentoGeneral
     );
+
+  const monto =
+    resumenDescuentoActual.subtotalConDescuento;
+
+  if (totalPagadoWhatsapp(solicitud) > monto + 0.001) {
+    alert(
+      `No puedes reducir el total a ${moneda(monto)} porque ya existen pagos por ${moneda(totalPagadoWhatsapp(solicitud))}.`
+    );
+    return;
+  }
 
   const despues = {
     cliente:
@@ -7735,10 +8082,17 @@ async function guardarEdicionSolicitudWhatsapp(
             Number(producto.precio),
 
           cantidad:
-            Number(producto.cantidad)
+            Number(producto.cantidad),
+
+          descuentoPorcentaje:
+            tipoDescuento === "PRODUCTO"
+              ? porcentajeDescuento(producto.descuentoPorcentaje)
+              : 0
         })
       ),
 
+    tipoDescuento,
+    descuentoGeneral,
     monto
   };
 
@@ -7808,6 +8162,16 @@ async function guardarEdicionSolicitudWhatsapp(
         solicitud
       ),
 
+    tipoDescuento:
+      tipoDescuentoWhatsappDesdeValores(
+        solicitud.tipoDescuento || "NINGUNO",
+        solicitud.descuentoGeneral || 0,
+        obtenerProductosWhatsapp(solicitud)
+      ),
+
+    descuentoGeneral:
+      Number(solicitud.descuentoGeneral || 0),
+
     monto:
       Number(
         solicitud.monto ??
@@ -7859,6 +8223,12 @@ async function guardarEdicionSolicitudWhatsapp(
 
         monto:
           despues.monto,
+
+        tipoDescuento:
+          despues.tipoDescuento,
+
+        descuentoGeneral:
+          despues.descuentoGeneral,
 
         tipoEntrega:
           despues.tipoEntrega,
@@ -8383,13 +8753,14 @@ ${
           ? `<span class="wa-card-owner"><i class="fa-solid fa-user-check"></i> Pedido tomado por <strong>${escapeHtml(nombreResponsableWhatsapp(item))}</strong></span>`
           : `<span class="wa-card-owner pending"><i class="fa-regular fa-user"></i> Pedido sin tomar</span>`
         }
+        <div class="item-collection-btn"> 
         <button
           type="button"
           class="wa-btn-historial"
           data-wa-historial="${escapeHtml(item.id)}"
         >
           <i class="fa-solid fa-clock-rotate-left"></i>
-          Historial
+          
         </button>
 
         ${
@@ -8401,7 +8772,7 @@ ${
                 data-wa-editar="${escapeHtml(item.id)}"
               >
                 <i class="fa-solid fa-pen"></i>
-                Editar
+                
               </button>
             `
             : ""
@@ -8413,8 +8784,7 @@ ${
   data-wa-contactar="${escapeHtml(item.id)}"
 >
   <i class="fa-brands fa-whatsapp"></i>
-  WhatsApp
-</button>
+</button></div>
         ${
   !nombreResponsableWhatsapp(item)
     ? `
@@ -8828,6 +9198,10 @@ btnNuevaSolicitudWhatsApp?.addEventListener(
     $("#waPuntoEntrega").value = "";
     $("#waUbicacion").value = "";
     $("#waCantidadProducto").value = "1";
+    if ($("#waTipoDescuento")) $("#waTipoDescuento").value = "NINGUNO";
+    if ($("#waDescuentoGeneral")) $("#waDescuentoGeneral").value = "";
+    if ($("#waDescuentoProducto")) $("#waDescuentoProducto").value = "";
+    actualizarCamposDescuentoWhatsapp(false);
     if ($("#waEstatusPago")) $("#waEstatusPago").value = "PENDIENTE";
     actualizarCamposPagoWhatsapp();
 
@@ -8840,6 +9214,16 @@ btnNuevaSolicitudWhatsApp?.addEventListener(
 );
 
 $("#waEstatusPago")?.addEventListener("change", actualizarCamposPagoWhatsapp);
+
+$("#waTipoDescuento")?.addEventListener(
+  "change",
+  () => actualizarCamposDescuentoWhatsapp(false)
+);
+
+$("#waDescuentoGeneral")?.addEventListener(
+  "input",
+  () => renderProductosWhatsappNueva()
+);
 
 document
   .querySelectorAll('[data-close="modalWhatsappSolicitud"]')
@@ -8960,6 +9344,18 @@ document
       return;
     }
 
+    if (!validarDescuentoWhatsapp(productosWhatsappNueva, false)) {
+      return;
+    }
+
+    const tipoDescuento =
+      tipoDescuentoWhatsappActual(false);
+
+    const descuentoGeneral =
+      tipoDescuento === "TOTAL"
+        ? porcentajeDescuento(descuentoGeneralWhatsappActual(false))
+        : 0;
+
     const productos =
       productosWhatsappNueva.map(
         producto => ({
@@ -8984,14 +9380,24 @@ document
             Number(producto.precio),
 
           cantidad:
-            Number(producto.cantidad)
+            Number(producto.cantidad),
+
+          descuentoPorcentaje:
+            tipoDescuento === "PRODUCTO"
+              ? porcentajeDescuento(producto.descuentoPorcentaje)
+              : 0
         })
       );
 
-    const monto =
-      calcularTotalProductosWhatsapp(
-        productos
+    const resumenDescuentoActual =
+      resumenDescuentoWhatsapp(
+        productos,
+        tipoDescuento,
+        descuentoGeneral
       );
+
+    const monto =
+      resumenDescuentoActual.subtotalConDescuento;
 
     const estatusPago = $("#waEstatusPago")?.value || "";
     if (!estatusPago) {
@@ -9085,6 +9491,9 @@ document
 
       monto,
 
+      tipoDescuento,
+      descuentoGeneral,
+
       estatusPago,
       montoApartado: montoInicial,
       metodoPago: metodoPagoInicial,
@@ -9136,6 +9545,12 @@ document
 
           monto:
             nuevaSolicitud.monto,
+
+          tipoDescuento:
+            nuevaSolicitud.tipoDescuento,
+
+          descuentoGeneral:
+            nuevaSolicitud.descuentoGeneral,
 
           estatusPago:
             nuevaSolicitud.estatusPago,
@@ -9190,7 +9605,7 @@ document
                 "SOLICITUD_CREADA",
 
               detalle:
-                `${productos.length} producto(s) · ${moneda(monto)}`,
+                `${productos.length} producto(s) · Subtotal ${moneda(resumenDescuentoActual.subtotalOriginal)} · Descuento ${moneda(resumenDescuentoActual.montoDescuento)} · Total ${moneda(monto)}`,
 
               usuarioUid:
                 usuarioActual?.uid || "",

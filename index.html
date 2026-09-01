@@ -646,6 +646,25 @@
         </div>
       </div>
 
+      <section class="discount-controls">
+        <label>
+          Descuento (opcional)
+          <select id="waTipoDescuento">
+            <option value="NINGUNO">Sin descuento</option>
+            <option value="TOTAL">Descuento sobre todos los productos</option>
+            <option value="PRODUCTO">Descuento diferente por producto</option>
+          </select>
+        </label>
+
+        <label id="waCampoDescuentoGeneral" class="hidden">
+          Porcentaje general
+          <span class="percent-input">
+            <input id="waDescuentoGeneral" type="number" min="1" max="99" step="1" placeholder="1 a 99">
+            <b>%</b>
+          </span>
+        </label>
+      </section>
+
       <div class="product-entry wa-product-entry">
         <label>
           ID producto
@@ -689,6 +708,14 @@
           >
         </label>
 
+        <label id="waCampoDescuentoProducto" class="discount-product-field hidden">
+          Descuento
+          <span class="percent-input">
+            <input id="waDescuentoProducto" type="number" min="1" max="99" step="1" placeholder="0">
+            <b>%</b>
+          </span>
+        </label>
+
         <button
           type="button"
           id="btnAgregarProductoWhatsapp"
@@ -703,9 +730,10 @@
         class="product-list wa-product-list"
       ></div>
 
-      <div class="order-total wa-order-total">
-        <span>Total</span>
-        <strong id="waProductosTotal">$0.00</strong>
+      <div class="order-total order-total-breakdown wa-order-total">
+        <span>Subtotal original: <strong id="waSubtotalOriginal">$0.00</strong></span>
+        <span>Descuento: <strong id="waMontoDescuento">-$0.00</strong></span>
+        <span class="grand-total">Total: <strong id="waProductosTotal">$0.00</strong></span>
       </div>
     </section>
 
