@@ -4285,7 +4285,7 @@ function configurarEstadosIniciales(tipoOperacion) {
 function abrirNuevoPedido(tipoOperacion) {
   $("#formSurtido").reset();
   $("#vendedor").value = perfilActual?.nombre || usuarioActual?.email || "";
-  $("#vendedor").readOnly = true;
+  $("#vendedor").readOnly = false;
   $("#tipoDescuento").value = "NINGUNO";
   $("#descuentoGeneral").value = "";
   $("#productoDescuento").value = "";
