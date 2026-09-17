@@ -1341,7 +1341,11 @@ function todosLosMovimientosCaja() {
         ubicacion: pedido.ubicacion || "",
         estadoPedido: textoEstado(pedido.estado),
         estatusPago: textoPago(pedido.estatusPago),
-        concepto: "Pago recibido"
+        concepto: "Pago recibido",
+        productos: (pedido.productos || []).map(producto => ({
+          nombre: producto.nombre || producto.descripcion || producto.clave || "Producto",
+          cantidad: Number(producto.cantidad || 1)
+        }))
       });
     }
 
@@ -1361,7 +1365,11 @@ function todosLosMovimientosCaja() {
         ubicacion: pedido.ubicacion || "",
         estadoPedido: textoEstado(pedido.estado),
         estatusPago: textoPago(pedido.estatusPago),
-        concepto: devolucion.motivo || "Devolución"
+        concepto: devolucion.motivo || "Devolución",
+        productos: (pedido.productos || []).map(producto => ({
+          nombre: producto.nombre || producto.descripcion || producto.clave || "Producto",
+          cantidad: Number(producto.cantidad || 1)
+        }))
       });
     }
 
@@ -1386,7 +1394,11 @@ function todosLosMovimientosCaja() {
         estadoPedido: ESTADOS_WHATSAPP_LABELS[normalizarEstadoWhatsapp(solicitud.estado)] || solicitud.estado || "",
         estatusPago: textoPago(estatusPagoWhatsapp(solicitud)),
         concepto: "Pago recibido · WhatsApp",
-        origen: "WHATSAPP"
+        origen: "WHATSAPP",
+        productos: (solicitud.productos || []).map(producto => ({
+          nombre: producto.nombre || producto.descripcion || producto.clave || "Producto",
+          cantidad: Number(producto.cantidad || 1)
+        }))
       });
     }
   }
@@ -1401,6 +1413,53 @@ function actualizarCamposPeriodoCaja() {
   $("#campoFechaCaja").classList.toggle("hidden", periodo !== "DIA");
   $("#campoSemanaCaja").classList.toggle("hidden", periodo !== "SEMANA");
   $("#campoMesCaja").classList.toggle("hidden", periodo !== "MES");
+}
+
+function abrirDetallePedidoCaja(movimiento) {
+  const modal = $("#modalDetallePedidoCaja");
+  const cliente = $("#detalleCajaCliente");
+  const vendedor = $("#detalleCajaVendedor");
+  const productos = $("#detalleCajaProductos");
+
+  if (!modal || !cliente || !vendedor || !productos) return;
+
+  cliente.textContent = movimiento.cliente || "Sin cliente";
+  vendedor.textContent = movimiento.vendedor || "Sin vendedor";
+  productos.innerHTML = "";
+
+  const listaProductos = Array.isArray(movimiento.productos)
+    ? movimiento.productos
+    : [];
+
+  if (!listaProductos.length) {
+    const vacio = document.createElement("p");
+    vacio.className = "detalle-caja-vacio";
+    vacio.textContent = "Este movimiento no tiene productos registrados.";
+    productos.appendChild(vacio);
+  } else {
+    for (const producto of listaProductos) {
+      const fila = document.createElement("div");
+      fila.className = "detalle-caja-producto";
+
+      const nombre = document.createElement("span");
+      nombre.className = "detalle-caja-producto-nombre";
+      nombre.textContent = producto.nombre || "Producto";
+
+      const cantidad = document.createElement("span");
+      cantidad.className = "detalle-caja-producto-cantidad";
+      cantidad.textContent = `Cantidad: ${Number(producto.cantidad || 1)}`;
+
+      fila.append(nombre, cantidad);
+      productos.appendChild(fila);
+    }
+  }
+
+  modal.showModal();
+}
+
+function cerrarDetallePedidoCaja() {
+  const modal = $("#modalDetallePedidoCaja");
+  if (modal?.open) modal.close();
 }
 
 function consultarCaja() {
@@ -1466,7 +1525,18 @@ function consultarCaja() {
       )}</td>
       <td class="money-cell ${movimiento.tipo !== "INGRESO" ? "return-amount" : ""}">${moneda(movimiento.importe)}</td>
       <td>${escapeHtml(movimiento.vendedor)}</td>
+      <td class="caja-action-cell">
+        <button type="button" class="secondary btn-ver-pedido-caja" aria-label="Ver productos del pedido">
+          <i class="fa-solid fa-eye" aria-hidden="true"></i>
+          Ver
+        </button>
+      </td>
     `;
+
+    fila
+      .querySelector(".btn-ver-pedido-caja")
+      .addEventListener("click", () => abrirDetallePedidoCaja(movimiento));
+
     tbody.appendChild(fila);
   }
 }
@@ -1506,6 +1576,27 @@ async function abrirReporteCaja() {
       !boton.classList.contains("active")
     ) {
       return;
+    }
+
+    const modalDetalleCaja = $("#modalDetallePedidoCaja");
+    const btnCerrarDetalleCaja = $("#btnCerrarDetallePedidoCaja");
+    const btnCerrarDetalleCajaPie = $("#btnCerrarDetallePedidoCajaPie");
+
+    if (btnCerrarDetalleCaja && !btnCerrarDetalleCaja.dataset.listenerActivo) {
+      btnCerrarDetalleCaja.addEventListener("click", cerrarDetallePedidoCaja);
+      btnCerrarDetalleCaja.dataset.listenerActivo = "1";
+    }
+
+    if (btnCerrarDetalleCajaPie && !btnCerrarDetalleCajaPie.dataset.listenerActivo) {
+      btnCerrarDetalleCajaPie.addEventListener("click", cerrarDetallePedidoCaja);
+      btnCerrarDetalleCajaPie.dataset.listenerActivo = "1";
+    }
+
+    if (modalDetalleCaja && !modalDetalleCaja.dataset.listenerActivo) {
+      modalDetalleCaja.addEventListener("click", event => {
+        if (event.target === modalDetalleCaja) cerrarDetallePedidoCaja();
+      });
+      modalDetalleCaja.dataset.listenerActivo = "1";
     }
 
     const hoy = fechaSoloDia();
@@ -5411,20 +5502,11 @@ Monto: ${moneda(solicitud.monto || 0)}
   case "pendiente_preparacion":
 
     mensaje = `
-Hola ${solicitud.cliente || ""} 👋
-
-Tu pedido ya fue confirmado y se encuentra pendiente de preparación.
-
-Referencia: ${solicitud.referencia || ""}
-Productos:
-${productosWhatsappMensaje(solicitud)}
-Ubicación: ${solicitud.ubicacion || "-"}
-
-Te avisaremos cuando esté preparado.
 
 
 
-Hola ${cliente} gracias por confiar en Noventia, Tu pedido esta confirmado y queda pendiente de preparacion
+
+Hola ${solicitud.cliente} gracias por confiar en Noventia, Tu pedido esta confirmado y queda pendiente de preparacion
 Referencia: ${solicitud.referencia || ""}
 Productos:${productosWhatsappMensaje(solicitud)}
 Ubicación: ${solicitud.ubicacion || "-"}

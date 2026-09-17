@@ -100,3 +100,111 @@
     flex-direction: column;
   }
 }
+
+/* Detalle de pedido exclusivo del Corte de Caja */
+#panelCorteCaja .caja-action-cell {
+  white-space: nowrap;
+}
+
+#panelCorteCaja .btn-ver-pedido-caja {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+}
+
+#modalDetallePedidoCaja {
+  width: min(560px, calc(100% - 28px));
+  max-height: 85vh;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+#modalDetallePedidoCaja::backdrop {
+  background: rgba(15, 23, 42, 0.58);
+}
+
+#modalDetallePedidoCaja .detalle-caja-contenido {
+  padding: 22px;
+  background: #fff;
+}
+
+#modalDetallePedidoCaja .detalle-caja-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+#modalDetallePedidoCaja .detalle-caja-header h2,
+#modalDetallePedidoCaja .detalle-caja-productos-wrap h3 {
+  margin: 0;
+}
+
+#modalDetallePedidoCaja .detalle-caja-datos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+#modalDetallePedidoCaja .detalle-caja-datos > div {
+  padding: 14px;
+  border: 1px solid #dce6e5;
+  border-radius: 12px;
+}
+
+#modalDetallePedidoCaja .detalle-caja-datos small {
+  display: block;
+  margin-bottom: 5px;
+  color: #6d7585;
+}
+
+#modalDetallePedidoCaja .detalle-caja-productos-wrap {
+  margin-bottom: 20px;
+}
+
+#modalDetallePedidoCaja .detalle-caja-productos {
+  max-height: 340px;
+  margin-top: 12px;
+  overflow-y: auto;
+  border-top: 1px solid #e5e7eb;
+}
+
+#modalDetallePedidoCaja .detalle-caja-producto {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 2px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+#modalDetallePedidoCaja .detalle-caja-producto-nombre {
+  font-weight: 700;
+}
+
+#modalDetallePedidoCaja .detalle-caja-producto-cantidad {
+  flex: 0 0 auto;
+  color: #6d7585;
+}
+
+#modalDetallePedidoCaja .detalle-caja-vacio {
+  margin: 14px 0;
+  color: #6d7585;
+}
+
+@media (max-width: 650px) {
+  #modalDetallePedidoCaja .detalle-caja-datos {
+    grid-template-columns: 1fr;
+  }
+
+  #modalDetallePedidoCaja .detalle-caja-producto {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}

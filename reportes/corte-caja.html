@@ -42,6 +42,7 @@
           <th>Método</th>
           <th>Importe</th>
           <th>Vendedor</th>
+          <th>Acción</th>
         </tr>
       </thead>
 
@@ -70,4 +71,36 @@
       Imprimir reporte
     </button>
   </div>
+
+  <dialog id="modalDetallePedidoCaja" class="modal-detalle-caja">
+    <div class="detalle-caja-contenido">
+      <div class="detalle-caja-header">
+        <h2>Detalle del pedido</h2>
+        <button id="btnCerrarDetallePedidoCaja" type="button" class="icon-button" aria-label="Cerrar detalle">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="detalle-caja-datos">
+        <div>
+          <small>Cliente</small>
+          <strong id="detalleCajaCliente">—</strong>
+        </div>
+        <div>
+          <small>Vendedor</small>
+          <strong id="detalleCajaVendedor">—</strong>
+        </div>
+      </div>
+
+      <section class="detalle-caja-productos-wrap">
+        <h3>Productos</h3>
+        <div id="detalleCajaProductos" class="detalle-caja-productos"></div>
+      </section>
+
+      <div class="dialog-actions">
+        <button id="btnCerrarDetallePedidoCajaPie" type="button" class="secondary">Cerrar</button>
+      </div>
+    </div>
+  </dialog>
+
 </section>
