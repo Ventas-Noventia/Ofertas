@@ -3701,6 +3701,14 @@ function abrirDetalle(s) {
     s.estatusPago === "PAGADO" || saldoPendiente(s) <= 0 || ["CANCELADO", "FINALIZADO"].includes(s.estado)
   );
 
+  const btnEditarMetodoPago = $("#btnEditarMetodoPago");
+  if (btnEditarMetodoPago) {
+    btnEditarMetodoPago.classList.toggle(
+      "hidden",
+      perfilActual?.rol !== "admin" || pagosPedido(s).length === 0
+    );
+  }
+
   const cancelacionVencidaPendiente =
     s.motivoCancelacion === "APARTADO_VENCIDO" &&
     s.devolucionInventarioPendiente !== false &&
@@ -3903,6 +3911,109 @@ async function cambiarEstado() {
   }
 }
 
+
+function abrirEdicionMetodoPago() {
+  if (!asegurarAdministrador() || !surtidoActual) return;
+
+  const pagos = pagosPedido(surtidoActual);
+  if (!pagos.length) {
+    alert("Este pedido todavía no tiene pagos registrados.");
+    return;
+  }
+
+  const modal = $("#modalEditarMetodoPago");
+  const selectorPago = $("#pagoEditarMetodo");
+  const selectorMetodo = $("#editarMetodoPago");
+  if (!modal || !selectorPago || !selectorMetodo) return;
+
+  $("#editarMetodoPagoFolio").textContent = surtidoActual.folio || "Pedido";
+  selectorPago.innerHTML = "";
+
+  pagos.forEach((pago, indice) => {
+    const option = document.createElement("option");
+    option.value = String(indice);
+    option.textContent = `Pago ${indice + 1} · ${moneda(pago.monto)} · ${metodoPagoTexto(pago.metodo)}`;
+    selectorPago.appendChild(option);
+  });
+
+  const cargarMetodoSeleccionado = () => {
+    const indice = Number(selectorPago.value || 0);
+    selectorMetodo.value = pagos[indice]?.metodo || "";
+  };
+
+  selectorPago.onchange = cargarMetodoSeleccionado;
+  selectorPago.value = String(Math.max(0, pagos.length - 1));
+  cargarMetodoSeleccionado();
+
+  modalDetalle.close();
+  modal.showModal();
+}
+
+async function guardarEdicionMetodoPago(event) {
+  event.preventDefault();
+  if (!asegurarAdministrador() || !surtidoActual?.idFirestore) return;
+
+  const pagosActuales = pagosPedido(surtidoActual);
+  if (!pagosActuales.length) return alert("Este pedido no tiene pagos registrados.");
+
+  const indice = Number($("#pagoEditarMetodo").value);
+  const nuevoMetodo = $("#editarMetodoPago").value;
+  if (!Number.isInteger(indice) || !pagosActuales[indice]) return alert("Selecciona un pago válido.");
+  if (!nuevoMetodo) return alert("Selecciona el nuevo método de pago.");
+
+  const metodoAnterior = pagosActuales[indice].metodo || "";
+  if (metodoAnterior === nuevoMetodo) return alert("El método de pago seleccionado no cambió.");
+
+  const pagosActualizados = pagosActuales.map((pago, i) =>
+    i === indice ? { ...pago, metodo: nuevoMetodo } : { ...pago }
+  );
+
+  // metodoPago conserva el método del pago más reciente para compatibilidad
+  // con las partes antiguas del sistema. El corte de caja usa pagos[].metodo.
+  const metodoPagoActual = pagosActualizados[pagosActualizados.length - 1]?.metodo || nuevoMetodo;
+  const modal = $("#modalEditarMetodoPago");
+
+  try {
+    establecerCargaModal(modal, true, "Actualizando método de pago…");
+
+    const datosActualizar = {
+      metodoPago: metodoPagoActual,
+      actualizadoEn: serverTimestamp(),
+      actualizadoPorUid: usuarioActual?.uid || "",
+      actualizadoPorNombre: perfilActual?.nombre || usuarioActual?.email || "Administrador",
+      historial: arrayUnion({
+        tipo: "METODO_PAGO_EDITADO",
+        detalle: `Pago ${indice + 1}: ${metodoPagoTexto(metodoAnterior)} → ${metodoPagoTexto(nuevoMetodo)}`,
+        usuarioUid: usuarioActual?.uid || "",
+        usuarioNombre: perfilActual?.nombre || usuarioActual?.email || "Administrador",
+        fechaISO: new Date().toISOString()
+      })
+    };
+
+    // Los pedidos actuales guardan pagos como arreglo. Para pedidos antiguos,
+    // pagosPedido() crea un pago virtual y solo se actualiza metodoPago.
+    if (Array.isArray(surtidoActual.pagos)) {
+      datosActualizar.pagos = pagosActualizados;
+    }
+
+    await updateDoc(doc(db, "surtidos", surtidoActual.idFirestore), datosActualizar);
+
+    surtidoActual = {
+      ...surtidoActual,
+      metodoPago: metodoPagoActual,
+      ...(Array.isArray(surtidoActual.pagos) ? { pagos: pagosActualizados } : {})
+    };
+
+    modal.close();
+    renderLista();
+    abrirDetalle(surtidoActual);
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo actualizar el método de pago. Revisa los permisos de Firestore.");
+  } finally {
+    establecerCargaModal(modal, false);
+  }
+}
 
 function abrirPago() {
   if (!surtidoActual) return;
@@ -4927,6 +5038,8 @@ $("#btnFinalizarNuevo").addEventListener("click", () => guardarPedido(true));
 $("#cambiarEstado").addEventListener("change", actualizarConfirmacionInventarioPorEstado);
 $("#btnCambiarEstado").addEventListener("click", cambiarEstado);
 $("#btnAgregarPago").addEventListener("click", abrirPago);
+$("#btnEditarMetodoPago")?.addEventListener("click", abrirEdicionMetodoPago);
+$("#formEditarMetodoPago")?.addEventListener("submit", guardarEdicionMetodoPago);
 $("#formPago").addEventListener("submit", guardarNuevoPago);
 $("#btnAbrirDevolucion").addEventListener("click", abrirDevolucion);
 $("#btnImprimir").addEventListener("click", () => imprimirEtiqueta(surtidoActual));

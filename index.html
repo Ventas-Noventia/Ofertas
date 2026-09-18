@@ -994,9 +994,44 @@
 
     <div class="dialog-actions wrap">
       <button id="btnAgregarPago" type="button" class="primary">Agregar pago</button>
+      <button id="btnEditarMetodoPago" type="button" class="secondary hidden"><i class="fa-solid fa-pen"></i> Editar método de pago</button>
       <button id="btnImprimir" type="button" class="secondary">Imprimir etiqueta</button>
       <button id="btnAbrirDevolucion" type="button" class="danger">Registrar devolución</button>
     </div>
+  </dialog>
+
+
+  <dialog id="modalEditarMetodoPago">
+    <div class="dialog-header">
+      <div>
+        <h2>Editar método de pago</h2>
+        <p id="editarMetodoPagoFolio"></p>
+      </div>
+      <button type="button" class="icon-button" data-close="modalEditarMetodoPago" aria-label="Cerrar">
+        <i data-close="modalEditarMetodoPago" class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <form id="formEditarMetodoPago">
+      <div class="form-grid">
+        <label id="campoPagoEditarMetodo">Pago
+          <select id="pagoEditarMetodo"></select>
+        </label>
+        <label>Nuevo método de pago
+          <select id="editarMetodoPago" required>
+            <option value="">Seleccionar</option>
+            <option value="EFECTIVO">Efectivo</option>
+            <option value="TRANSFERENCIA">Transferencia</option>
+            <option value="K_EFECTIVO">K efectivo</option>
+          </select>
+        </label>
+      </div>
+      <p class="muted">Solo administradores pueden realizar este cambio. No se solicitará motivo por ahora.</p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" data-close="modalEditarMetodoPago">Cancelar</button>
+        <button type="submit" class="primary"><i class="fa-solid fa-floppy-disk"></i> Guardar método</button>
+      </div>
+    </form>
   </dialog>
 
 
