@@ -958,6 +958,8 @@ function iniciarEscuchaSolicitudesWhatsapp() {
       });
       actualizarFiltrosTrazabilidadWhatsapp();
       renderSolicitudesWhatsapp();
+      renderInicioUnificado();
+      actualizarCajaSiEstaAbierta();
 
       if (!$("#waVistaKanban")?.classList.contains("hidden")) {
         renderKanbanWhatsapp();
@@ -1460,6 +1462,14 @@ function abrirDetallePedidoCaja(movimiento) {
 function cerrarDetallePedidoCaja() {
   const modal = $("#modalDetallePedidoCaja");
   if (modal?.open) modal.close();
+}
+
+// Mantiene el corte de caja sincronizado con los pagos recibidos desde
+// cualquier canal mientras el usuario consulta el reporte.
+function actualizarCajaSiEstaAbierta() {
+  if (modalCaja && !modalCaja.classList.contains("hidden")) {
+    consultarCaja();
+  }
 }
 
 function consultarCaja() {
@@ -2467,6 +2477,8 @@ function iniciarEscuchaPedidos() {
   cancelarEscuchaSurtidos = onSnapshot(q, snapshot => {
     surtidos = snapshot.docs.map(d => ({ idFirestore: d.id, ...d.data() }));
     renderLista();
+    renderInicioUnificado();
+    actualizarCajaSiEstaAbierta();
 
     if (perfilActual?.rol === "admin") {
       cancelarApartadosVencidos();
@@ -2599,6 +2611,8 @@ function renderLista() {
   lista.innerHTML = "";
   $("#sinResultados").classList.toggle("hidden", filtrados.length > 0);
 
+  window.__noventiaFiltradosInicio = filtrados;
+  if (vistaInicioActual === "kanban") renderInicioUnificado();
   for (const s of filtrados) {
     const nodo = $("#templateCard").content.cloneNode(true);
     nodo.querySelector(".card-id").textContent = s.folio || "Sin folio";
@@ -2665,6 +2679,7 @@ function renderLista() {
 
     lista.appendChild(nodo);
   }
+  renderInicioUnificado();
 
   const pedidosActivos = surtidos.filter(s => s.eliminado !== true);
   $("#totalHoy").textContent = pedidosActivos.filter(hoyMismo).length;
@@ -4957,6 +4972,156 @@ async function cambiarEstadoWhatsapp(id, nuevoEstado) {
   }
 }
 
+// Inicio unificado: reutiliza las fuentes Firestore ya suscritas y NO escribe duplicados.
+let vistaInicioActual = "tarjetas";
+// Cada columna conserva su búsqueda aunque Firebase vuelva a renderizar el tablero.
+const busquedasColumnasInicio = new Map();
+function textoBusquedaKanbanInicio(item) {
+  return normalizarTexto([
+    item.origenInicio === "WHATSAPP" ? item.referencia : item.folio,
+    item.origenInicio === "WHATSAPP" ? item.cliente : item.nombreCliente,
+    item.vendedor,
+    ...(item.productos || []).map(p => [p.nombre, p.descripcion, p.clave].filter(Boolean).join(" "))
+  ].filter(Boolean).join(" "));
+}
+
+const estadosInicio = ["En proceso", "En ruta / preparación", "Entregado", "Finalizado", "Cancelado"];
+function estadoColumnaInicio(item) {
+  const e = String(item.estado || "").toUpperCase();
+  if (["CANCELADO", "CANCELADA"].includes(e)) return 4;
+  if (["FINALIZADO", "FINALIZADA"].includes(e)) return 3;
+  if (["ENTREGADO", "ENTREGADA", "LISTO", "LISTO_ENTREGA"].includes(e)) return 2;
+  if (["ENVIADO", "CON_REPARTIDOR", "PREPARADO", "EN_PREPARACION", "PENDIENTE_PREPARACION", "CLASIFICADO"].includes(e)) return 1;
+  return 0;
+}
+function pedidosInicioUnificados() {
+  const normales = (window.__noventiaFiltradosInicio || []).map(p => ({...p, origenInicio: "PEDIDO"}));
+  const texto = $("#buscador")?.value.trim().toLowerCase() || "";
+  const filtroEstado = $("#filtroEstado")?.value || "";
+  const filtroPago = $("#filtroPago")?.value || "";
+  const filtroMetodo = $("#filtroMetodo")?.value || "";
+  const filtroDevolucion = $("#filtroDevolucion")?.value || "";
+  const whatsapp = solicitudesWhatsapp.filter(p => {
+    if (p.eliminado === true) return false;
+    const contenido = [p.referencia, p.cliente, p.vendedor, p.grupo, ...(p.productos || []).map(x => x.nombre || x.descripcion || x.clave)].filter(Boolean).join(" ").toLowerCase();
+    if (texto && !contenido.includes(texto)) return false;
+    if (filtroEstado && estadoColumnaInicio(p) !== estadoColumnaInicio({estado:filtroEstado})) return false;
+    if (filtroPago && estatusPagoWhatsapp(p) !== filtroPago) return false;
+    if (filtroMetodo && !pagosSolicitudWhatsapp(p).some(x => x.metodo === filtroMetodo)) return false;
+    if (filtroDevolucion === "CON_DEVOLUCION") return false;
+    if (filtroPagadosPendientesActivo) return false;
+    return true;
+  }).map(p => ({...p, origenInicio: "WHATSAPP"}));
+  return [...normales, ...whatsapp];
+}
+function tarjetaInicio(item) {
+  const wa = item.origenInicio === "WHATSAPP";
+  const folio = wa ? item.referencia : item.folio;
+  const cliente = wa ? item.cliente : item.nombreCliente;
+  const estado = wa ? (ESTADOS_WHATSAPP_LABELS[normalizarEstadoWhatsapp(item.estado)] || item.estado) : textoEstado(item.estado);
+  const productos = (item.productos || []).map(p => `${p.cantidad || 1} × ${p.nombre || p.descripcion || p.clave || "Producto"}`).join(", ");
+  const el = document.createElement("article");
+  el.className = "inicio-pedido-card";
+  el.innerHTML = `<div class="inicio-pedido-head"><strong>${escapeHtml(folio || "Sin folio")}</strong>${wa ? `<span class="inicio-origen wa"><i class="fa-brands fa-whatsapp"></i> WhatsApp</span>` : ""}</div><p>${escapeHtml(cliente || "Sin cliente")}</p><small>${escapeHtml(estado || "Sin estado")} · ${escapeHtml(item.vendedor || "Sin vendedor")}</small><p class="inicio-productos">${escapeHtml(productos || "Sin productos")}</p><button type="button" class="secondary">${wa ? "Abrir en WhatsApp" : "Ver pedido"}</button>`;
+  el.querySelector("button").addEventListener("click", () => {
+    if (wa) { mostrarVistaWhatsapp(); return; }
+    abrirDetalle(surtidos.find(p => p.idFirestore === item.idFirestore) || item);
+  });
+  return el;
+}
+// Orden cronológico descendente para cada columna del Kanban (más reciente primero).
+function fechaOrdenKanbanInicio(item) {
+  const wa = item.origenInicio === "WHATSAPP";
+  const valor = wa
+    ? (item.fechaCreacion || item.creadoEn || item.fechaPedido)
+    : (item.fechaPedido || item.creadoEn || item.fechaCreacion);
+  if (!valor) return 0;
+  let fecha;
+  if (typeof valor.toDate === "function") fecha = valor.toDate();
+  else if (typeof valor.seconds === "number") fecha = new Date(valor.seconds * 1000);
+  else if (typeof valor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(valor)) fecha = new Date(`${valor}T00:00:00`);
+  else fecha = new Date(valor);
+  const tiempo = fecha.getTime();
+  return Number.isFinite(tiempo) ? tiempo : 0;
+}
+function renderInicioUnificado() {
+  const kanban = $("#inicioKanban");
+  const listaNormal = $("#listaSurtidos");
+  if (!kanban || !listaNormal) return;
+  const modoKanban = vistaInicioActual === "kanban";
+  kanban.classList.toggle("hidden", !modoKanban);
+  listaNormal.classList.toggle("hidden", modoKanban);
+  $("#sinResultados")?.classList.toggle("hidden", modoKanban);
+  $("#btnInicioTarjetas")?.classList.toggle("active", !modoKanban);
+  $("#btnInicioKanban")?.classList.toggle("active", modoKanban);
+  $("#btnInicioTarjetas")?.setAttribute("aria-pressed", String(!modoKanban));
+  $("#btnInicioKanban")?.setAttribute("aria-pressed", String(modoKanban));
+  // Tarjetas: conservar las originales y añadir WhatsApp como canal diferenciado.
+  document.querySelectorAll("#listaSurtidos .inicio-wa-card").forEach(el => el.remove());
+  if (!modoKanban) {
+    for (const item of pedidosInicioUnificados().filter(p => p.origenInicio === "WHATSAPP")) {
+      const card = tarjetaInicio(item);
+      card.classList.add("inicio-wa-card");
+      listaNormal.appendChild(card);
+    }
+    $("#sinResultados")?.classList.toggle("hidden", listaNormal.children.length > 0);
+    return;
+  }
+  kanban.replaceChildren();
+  const pedidos = pedidosInicioUnificados();
+  estadosInicio.forEach((nombre, indice) => {
+    const columna = document.createElement("section");
+    columna.className = `inicio-kanban-columna inicio-kanban-estado-${indice}`;
+    const items = pedidos.filter(p => estadoColumnaInicio(p) === indice)
+      .sort((a, b) => fechaOrdenKanbanInicio(b) - fechaOrdenKanbanInicio(a));
+    const titulo = document.createElement("h3");
+    titulo.textContent = `${nombre} (${items.length})`;
+    columna.appendChild(titulo);
+    const buscadorColumna = document.createElement("input");
+    buscadorColumna.type = "search";
+    buscadorColumna.className = "inicio-kanban-buscador";
+    buscadorColumna.placeholder = `Buscar en ${nombre.toLowerCase()}...`;
+    buscadorColumna.setAttribute("aria-label", `Buscar pedidos en ${nombre}`);
+    buscadorColumna.autocomplete = "off";
+    buscadorColumna.value = busquedasColumnasInicio.get(indice) || "";
+    columna.appendChild(buscadorColumna);
+    const contenido = document.createElement("div");
+    contenido.className = "inicio-kanban-items";
+    const tarjetas = items.map(item => {
+      const tarjeta = tarjetaInicio(item);
+      tarjeta.dataset.busquedaKanban = textoBusquedaKanbanInicio(item);
+      contenido.appendChild(tarjeta);
+      return tarjeta;
+    });
+    const vacio = document.createElement("p");
+    vacio.className = "inicio-kanban-vacio";
+    contenido.appendChild(vacio);
+    const actualizarBusqueda = () => {
+      const termino = normalizarTexto(buscadorColumna.value);
+      busquedasColumnasInicio.set(indice, buscadorColumna.value);
+      let visibles = 0;
+      tarjetas.forEach(tarjeta => {
+        const coincide = !termino || tarjeta.dataset.busquedaKanban.includes(termino);
+        tarjeta.classList.toggle("hidden", !coincide);
+        if (coincide) visibles++;
+      });
+      titulo.textContent = `${nombre} (${visibles}${termino ? ` de ${items.length}` : ""})`;
+      vacio.textContent = items.length ? "Sin coincidencias" : "Sin pedidos";
+      vacio.classList.toggle("hidden", visibles > 0);
+    };
+    buscadorColumna.addEventListener("input", actualizarBusqueda);
+    actualizarBusqueda();
+    columna.appendChild(contenido);
+    kanban.appendChild(columna);
+  });
+}
+$("#btnInicioTarjetas")?.addEventListener("click", () => {vistaInicioActual = "tarjetas"; renderInicioUnificado();});
+$("#btnInicioKanban")?.addEventListener("click", () => {vistaInicioActual = "kanban"; renderInicioUnificado();});
+document.querySelectorAll("[data-inicio-accion]").forEach(boton => boton.addEventListener("click", () => {
+  const destino = document.getElementById(boton.dataset.inicioAccion);
+  if (destino && !destino.classList.contains("hidden") && !destino.disabled) destino.click();
+}));
+
 function mostrarVistaPedidos() {
   modalCaja.classList.add("hidden");
   $("#vistaWhatsapp")?.classList.add("hidden");
@@ -4970,6 +5135,8 @@ function mostrarVistaWhatsapp() {
   renderSolicitudesWhatsapp();
 }
 
+$("#btnPanelPrincipal")?.addEventListener("click", mostrarVistaPedidos);
+$("#btnVolverInicioWhatsapp")?.addEventListener("click", mostrarVistaPedidos);
 $("#btnAlmacen").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("ALM"); });
 $("#btnBazar").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("BAZ"); });
 $("#btnVentaRapida").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("VR"); });
@@ -4980,7 +5147,7 @@ $("#btnVolverPedidosCaja").addEventListener("click", () => {
   document
     .querySelectorAll(".sidebar-link.active")
     .forEach(elemento => elemento.classList.remove("active"));
-  $("#btnAlmacen").classList.add("active");
+  $("#btnPanelPrincipal")?.classList.add("active");
 });
 $("#btnExportar").addEventListener("click", exportarPedidos);
 $("#periodoCaja").addEventListener("change", () => {
@@ -6430,11 +6597,8 @@ function resumenProductoLegacyWhatsapp(productos = []) {
 }
 
 
-function mostrarMensajeProductoWhatsapp(
-  campoId,
-  texto = "",
-  tipo = ""
-) {
+function mostrarMensajeProductoWhatsapp(campoId,texto = "",tipo = "") {
+
   const campo = $(campoId);
   if (!campo) return;
 
@@ -6528,11 +6692,11 @@ function buscarProductoCatalogoWhatsapp({
 
   $(cantidadCampo).value = "1";
 
-  mostrarMensajeProductoWhatsapp(
-    idCampo,
-    `Producto encontrado: ${producto.nombre}`,
-    "found"
-  );
+  // mostrarMensajeProductoWhatsapp(
+  //   idCampo,
+  //   `Producto encontrado: ${producto.nombre}`,
+  //   "found"
+  // );
 
   if (enfocarSiguiente) {
     if (!producto.costo) {

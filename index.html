@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Control de pedidos</title>
-  <link rel="stylesheet" href="styles.css?v=29-noventia-ui" />
+  <link rel="stylesheet" href="styles.css?v=30-noventia-topbar" />
   <link rel="stylesheet" href="reportes/reportes.css?v=1">
 </head>
 <body>
@@ -14,7 +14,7 @@
   </button>
   <div id="menuOverlay" class="sidebar-overlay" aria-hidden="true"></div>
 
-  <aside id="menuLateral" class="sidebar" aria-label="Menú principal">
+  <aside id="menuLateral" class="sidebar top-navigation" aria-label="Menú principal">
     <div class="sidebar-brand">
       <img src="logo.JPG" alt="Noventia" class="imglogo">
       <button id="btnCerrarMenu" class="sidebar-close" type="button" aria-label="Cerrar menú">
@@ -32,24 +32,38 @@
     </div>
 
     <nav class="sidebar-nav">
-      <p class="sidebar-section-title">Nueva venta</p>
-      <button id="btnAlmacen" class="sidebar-link active" type="button"><i class="fas fa-store"></i><span>Venta de almacén</span></button>
-      <button id="btnBazar" class="sidebar-link" type="button"><i class="fas fa-store-alt"></i><span>Venta de bazar</span></button>
-      <button id="btnVentaRapida" class="sidebar-link" type="button"><i class="fas fa-cash-register"></i><span>Venta rápida</span></button>
-      <button id="btnWhatsapp" class="sidebar-link" type="button"><i class="fa-brands fa-whatsapp"></i><span>Solicitudes WhatsApp</span></button>
+      <p class="sidebar-section-title">Navegación</p>
+      <button id="btnPanelPrincipal" class="sidebar-link active" type="button"><span>Panel de control</span></button>
+      <button id="btnListaPedidos" class="sidebar-link" type="button"><span>Lista de pedidos</span></button>
+      <p class="sidebar-section-title nav-sales-label">Nueva venta</p>
+      <button id="btnAlmacen" class="sidebar-link" type="button"><span>Venta de almacén</span></button>
+      <button id="btnBazar" class="sidebar-link" type="button"><span>Venta de bazar</span></button>
+      <button id="btnVentaRapida" class="sidebar-link" type="button"><span>Venta rápida</span></button>
+      <button id="btnWhatsapp" class="sidebar-link" type="button"><span>Solicitudes WhatsApp</span></button>
 
       <p class="sidebar-section-title">Administración</p>
-      <button id="btnReporteCaja" data-admin-only class="sidebar-link" type="button"><i class="fa-solid fa-chart-column"></i><span>Reporte de caja</span></button>
-      <button id="btnExportar" data-admin-only class="sidebar-link" type="button"><i class="fa-solid fa-file-export"></i><span>Exportar pedidos</span></button>
-      <button id="btnGestionUsuarios" data-admin-only class="sidebar-link" type="button"><i class="fa-solid fa-user-shield"></i><span>Cuentas y roles</span></button>
-      <button id="btnCargaClientes" class="sidebar-link hidden" type="button"><i class="fa-solid fa-users-gear"></i><span>Carga de clientes</span></button>
-      <a href="lista-productos.html" class="sidebar-link"><i class="fa-solid fa-list-check"></i><span>Lista de productos</span></a>
+      <button id="btnReporteCaja" data-admin-only class="sidebar-link" type="button"><span>Reporte de caja</span></button>
+      <button id="btnExportar" data-admin-only class="sidebar-link" type="button"><span>Exportar pedidos</span></button>
+      <button id="btnGestionUsuarios" data-admin-only class="sidebar-link" type="button"><span>Cuentas y roles</span></button>
+      <button id="btnCargaClientes" class="sidebar-link hidden" type="button"><span>Carga de clientes</span></button>
+      <a href="lista-productos.html" class="sidebar-link"><span>Lista de productos</span></a>
     </nav>
 
-    <button id="btnCerrarSesion" class="sidebar-link sidebar-logout" type="button"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Cerrar sesión</span></button>
+    <button id="btnCerrarSesion" class="sidebar-link sidebar-logout" type="button" aria-label="Cerrar sesión" title="Cerrar sesión"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
   </aside>
 
   <main id="vistaPedidos" class="container">
+    <section class="inicio-noventia" aria-label="Inicio y accesos">
+      <div class="inicio-noventia-header"><div><h1>Panel principal</h1><p>Consulta y seguimiento de pedidos de todos los canales</p></div></div>
+      <div class="inicio-accesos">
+        <button type="button" data-inicio-accion="btnAlmacen"><i class="fas fa-store"></i><span>Almacén</span></button>
+        <button type="button" data-inicio-accion="btnBazar"><i class="fas fa-store-alt"></i><span>Bazar</span></button>
+        <button type="button" data-inicio-accion="btnVentaRapida"><i class="fas fa-cash-register"></i><span>Venta rápida</span></button>
+        <button type="button" data-inicio-accion="btnWhatsapp"><i class="fa-brands fa-whatsapp"></i><span>WhatsApp</span></button>
+        <button type="button" data-inicio-accion="btnReporteCaja" data-admin-only><i class="fa-solid fa-chart-column"></i><span>Corte de caja</span></button>
+        <button type="button" data-inicio-accion="btnGestionUsuarios" data-admin-only><i class="fa-solid fa-users"></i><span>Usuarios</span></button>
+      </div>
+    </section>
     <section class="summary">
       <article><span id="totalHoy">0</span><small>Pedidos de hoy</small></article>
       <article><span id="totalProceso">0</span><small>En proceso</small></article>
@@ -100,12 +114,15 @@
 
     <section>
       <div id="estadoConexion" class="notice">Conectando con Firebase…</div>
+      <div class="inicio-vistas"><strong>Todos los pedidos</strong><div class="inicio-vistas-botones"><button id="btnInicioTarjetas" class="active" type="button" aria-pressed="true">Tarjetas</button><button id="btnInicioKanban" type="button" aria-pressed="false">Kanban</button></div></div>
       <div id="listaSurtidos" class="cards"></div>
+      <div id="inicioKanban" class="inicio-kanban hidden" aria-label="Pedidos por estado"></div>
       <div id="sinResultados" class="empty hidden">No hay pedidos para mostrar.</div>
     </section>
   </main>
 
   <main id="vistaWhatsapp" class="container hidden">
+    <div class="volver-inicio-barra"><button id="btnVolverInicioWhatsapp" type="button" class="secondary"><i class="fa-solid fa-arrow-left"></i> Volver al panel de control</button></div>
     <section class="whatsapp-header">
 
       <div>
@@ -1047,7 +1064,7 @@
       type="button"
       class="secondary"
     >
-      Volver a pedidos
+      Volver al panel de control
     </button>
   </div>
 
@@ -1671,5 +1688,12 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module" src="app.js?v=31-correccion-pestanas"></script>
   </div>
+
+<script>
+  document.getElementById("btnListaPedidos")?.addEventListener("click", () => {
+    document.getElementById("vistaPedidos")?.classList.remove("hidden");
+    document.getElementById("buscador")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+</script>
 </body>
 </html>

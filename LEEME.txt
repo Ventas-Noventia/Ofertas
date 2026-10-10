@@ -1,0 +1,10 @@
+Noventia - Panel unificado y corte de caja en tiempo real
+
+Reemplazar solamente app.js por el incluido en este ZIP.
+
+- Se mantiene la lectura de pedidos normales desde surtidos y de WhatsApp desde solicitudes_whatsapp.
+- Ambas fuentes siguen apareciendo en el panel de control (Tarjetas y Kanban).
+- El corte de caja ya incluye los pagos de ambas colecciones; ahora se actualiza automáticamente si está abierto y llega un cambio desde Firebase.
+- No se modifican las reglas de Firebase ni la configuración.
+
+IMPORTANTE: Si un mismo pedido se captura por duplicado en ambas colecciones, sus pagos podrían contabilizarse dos veces. Esta actualización no fusiona ni deduplica registros distintos sin un identificador compartido. Verificar ese caso en pruebas reales.
