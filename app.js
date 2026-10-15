@@ -2478,6 +2478,8 @@ function iniciarEscuchaPedidos() {
     surtidos = snapshot.docs.map(d => ({ idFirestore: d.id, ...d.data() }));
     renderLista();
     renderInicioUnificado();
+    renderSolicitudesWhatsapp();
+    if (!$("#waVistaKanban")?.classList.contains("hidden")) renderKanbanWhatsapp();
     actualizarCajaSiEstaAbierta();
 
     if (perfilActual?.rol === "admin") {
@@ -2579,6 +2581,7 @@ function renderLista() {
   const filtroPago = $("#filtroPago").value;
   const filtroMetodo = $("#filtroMetodo").value;
   const filtroDevolucion = $("#filtroDevolucion").value;
+  const filtroCanal = $("#filtroCanalVenta")?.value || "";
 
   let filtrados = surtidos.filter(s => {
     if (s.eliminado === true) return false;
@@ -2595,7 +2598,8 @@ function renderLista() {
       (filtroDevolucion === "CON_DEVOLUCION" && tieneDevoluciones) ||
       (filtroDevolucion === "SIN_DEVOLUCION" && !tieneDevoluciones);
 
-    return (!texto || contenido.includes(texto)) &&
+    return (!filtroCanal || (filtroCanal === "WHATSAPP" ? esPedidoCanalWhatsapp(s) : !esPedidoCanalWhatsapp(s))) &&
+      (!texto || contenido.includes(texto)) &&
       (!filtro || s.estado === filtro) &&
       coincidePago &&
       coincideMetodo &&
@@ -2643,6 +2647,27 @@ function renderLista() {
       `${s.productos?.length || 0} productos · ${totalPiezas(s.productos)} piezas${(s.devoluciones || []).length ? " · Con devolución" : ""}`;
 
     const tarjeta = nodo.querySelector(".card");
+    if (esPedidoCanalWhatsapp(s)) {
+      const etiqueta = document.createElement("span");
+      etiqueta.className = "inicio-origen wa";
+      etiqueta.innerHTML = '<i class="fa-brands fa-whatsapp" aria-hidden="true"></i> WhatsApp';
+      tarjeta.classList.add("pedido-canal-whatsapp");
+      tarjeta.setAttribute("data-canal-venta", "WHATSAPP");
+      tarjeta.querySelector(".card-head")?.appendChild(etiqueta);
+      const statusWa = document.createElement("small");
+      statusWa.className = "wa-estado-en-panel";
+      statusWa.textContent = `WhatsApp: ${ESTADOS_WHATSAPP_LABELS[estadoCanalWhatsapp(s)] || estadoCanalWhatsapp(s)}`;
+      tarjeta.querySelector(".card-head")?.after(statusWa);
+      const siguiente = obtenerSiguienteEstadoWhatsapp(estadoCanalWhatsapp(s));
+      if (siguiente) {
+        const avanzar = document.createElement("button");
+        avanzar.type = "button";
+        avanzar.className = "secondary wa-panel-avanzar";
+        avanzar.textContent = siguiente[1];
+        avanzar.addEventListener("click", event => { event.stopPropagation(); avanzarSurtidoWhatsapp(s, siguiente[0]); });
+        tarjeta.appendChild(avanzar);
+      }
+    }
     const pendienteEnvio = pedidoPagadoPendienteEnvio(s);
     nodo.querySelector(".card-shipping-alert").classList.toggle("hidden", !pendienteEnvio);
     tarjeta.classList.toggle("paid-pending-shipment", pendienteEnvio);
@@ -3427,6 +3452,7 @@ document.addEventListener("click", event => {
 
 function validarPedido() {
   const tipoOperacion = $("#tipoOperacion").value;
+  // No reiniciar el canal durante la validación: se guarda la elección del operador.
   const esVentaRapida = tipoOperacion === "VR";
   const tipoEntrega = document.querySelector('input[name="tipoEntrega"]:checked')?.value;
   const tipoDescuento = $("#tipoDescuento").value;
@@ -3513,7 +3539,8 @@ async function guardarPedido(imprimir) {
 
   const tipoOperacion = $("#tipoOperacion").value;
   const estatusPago = $("#estatusPago").value;
-  const estado = tipoOperacion === "VR" ? "FINALIZADO" : $("#estadoInicial").value;
+  const esVentaWhatsapp = Boolean($("#ventaPorWhatsapp")?.checked);
+  const estado = tipoOperacion === "VR" && !esVentaWhatsapp ? "FINALIZADO" : (tipoOperacion === "VR" ? "EN_PROCESO" : $("#estadoInicial").value);
   const costoEnvio = tipoOperacion === "VR" ? 0 : costoEnvioNuevo();
   const tipoDescuento = $("#tipoDescuento").value || "NINGUNO";
   const descuentoGeneral = tipoDescuento === "TOTAL" ? Number($("#descuentoGeneral").value || 0) : 0;
@@ -3541,6 +3568,9 @@ async function guardarPedido(imprimir) {
     folio: siguienteFolio(tipoOperacion),
     fechaPedido: $("#fechaPedido").value,
     tipoOperacion,
+    canalVenta: esVentaWhatsapp ? "WHATSAPP" : "DIRECTO",
+    estadoWhatsapp: esVentaWhatsapp ? "confirmar" : null,
+    origenInventario: tipoOperacion,
     nombreCliente: $("#nombreCliente").value.trim(),
     clienteId: $("#clienteId").value || "",
     clienteTelefono: $("#clienteTelefono").value || "",
@@ -4678,6 +4708,7 @@ function renderSolicitudesWhatsapp() {
   const contar = estado => solicitudesWhatsapp.filter(item => item.estado === estado).length;
   const ids = { confirmar: "waCountConfirmar", pendiente_preparacion: "waCountPendiente", preparado: "waCountPreparado", listo: "waCountListo", finalizado: "waCountFinalizado" };
   Object.entries(ids).forEach(([estado, id]) => { const el = document.getElementById(id); if (el) el.textContent = contar(estado); });
+  actualizarVistaSurtidosWhatsapp();
 }
 
 function nombreResponsableWhatsapp(solicitud = {}) {
@@ -4972,6 +5003,91 @@ async function cambiarEstadoWhatsapp(id, nuevoEstado) {
   }
 }
 
+// Pedidos capturados en Almacén/Bazar/Venta rápida, gestionados por WhatsApp.
+// La colección surtidos es la única fuente de verdad para estos pedidos.
+function esPedidoCanalWhatsapp(p) { return p?.canalVenta === "WHATSAPP"; }
+function pedidosSurtidosWhatsapp() {
+  return surtidos.filter(p => p.eliminado !== true && esPedidoCanalWhatsapp(p));
+}
+function estadoCanalWhatsapp(p) {
+  return normalizarEstadoWhatsapp(p.estadoWhatsapp || (p.estado === "FINALIZADO" ? "finalizado" : p.estado === "CANCELADO" ? "cancelado" : "confirmar"));
+}
+function tarjetaCanalWhatsapp(p) {
+  const estado = estadoCanalWhatsapp(p);
+  const siguiente = obtenerSiguienteEstadoWhatsapp(estado);
+  const saldo = saldoPendiente(p);
+  const productos = (p.productos || []).map(x => `${Number(x.cantidad || 1)} × ${x.nombre || x.descripcion || x.clave || "Producto"}`).join(", ");
+  return `<article class="whatsapp-order-card wa-canal-surtidos pedido-canal-whatsapp">
+    <div class="whatsapp-order-top"><div><div class="whatsapp-order-reference">${escapeHtml(p.folio || "Pedido")}</div><div class="whatsapp-order-client">${escapeHtml(p.nombreCliente || "Cliente sin nombre")}</div></div><span class="inicio-origen wa"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> WhatsApp · ${escapeHtml(({ALM:"Almacén",BAZ:"Bazar",VR:"Venta rápida"})[p.tipoOperacion] || "Pedido")}</span></div>
+    <p class="wa-canal-detalle">${escapeHtml(productos || "Sin productos")}</p>
+    <div class="wa-canal-montos"><span>Total: <strong>${moneda(totalAjustadoPedido(p))}</strong></span><span>Pagado: <strong>${moneda(totalPagado(p))}</strong></span><span>Saldo: <strong>${moneda(saldo)}</strong></span></div>
+    <div class="whatsapp-order-bottom"><span class="wa-status">${escapeHtml(ESTADOS_WHATSAPP_LABELS[estado] || estado)}</span>
+      <button type="button" class="wa-btn-secondary" data-surtido-wa-abrir="${escapeHtml(p.idFirestore)}">Ver / editar pedido</button>
+      ${saldo > .009 && !["finalizado", "cancelado"].includes(estado) ? `<button type="button" class="wa-btn-secondary" data-surtido-wa-pagar="${escapeHtml(p.idFirestore)}">Registrar pago</button>` : ""}
+      ${siguiente ? `<button type="button" class="wa-btn-primary" data-surtido-wa-avanzar="${escapeHtml(p.idFirestore)}" data-estado-destino="${escapeHtml(siguiente[0])}">${escapeHtml(siguiente[1])}</button>` : ""}
+    </div>
+  </article>`;
+}
+async function avanzarSurtidoWhatsapp(p, nuevoEstado) {
+  if (!p || !esPedidoCanalWhatsapp(p)) return;
+  const actual = estadoCanalWhatsapp(p);
+  if (!(TRANSICIONES_WHATSAPP[actual] || []).includes(nuevoEstado)) {
+    alert("El cambio de estado no está permitido."); return;
+  }
+  if (nuevoEstado === "finalizado" && saldoPendiente(p) > .009) {
+    alert(`Debes liquidar ${moneda(saldoPendiente(p))} antes de finalizar.`); return;
+  }
+  const cambios = {
+    estadoWhatsapp: nuevoEstado,
+    actualizadoEn: serverTimestamp(),
+    historial: arrayUnion({tipo: "CAMBIO_ESTADO_WHATSAPP", estadoAnterior: actual, estadoNuevo: nuevoEstado,
+      usuarioUid: usuarioActual?.uid || "", usuarioNombre: perfilActual?.nombre || usuarioActual?.email || "Usuario", fechaISO: new Date().toISOString()})
+  };
+  // Sincronizar la finalización con el flujo original; no alterar el estado de almacén durante preparación.
+  if (nuevoEstado === "finalizado") cambios.estado = "FINALIZADO";
+  try { await updateDoc(doc(db, "surtidos", p.idFirestore), cambios); }
+  catch (e) { console.error(e); alert("No se pudo actualizar el estado de WhatsApp."); }
+}
+document.addEventListener("click", event => {
+  const boton = event.target.closest("[data-surtido-wa-abrir], [data-surtido-wa-pagar], [data-surtido-wa-avanzar]");
+  if (!boton) return;
+  const id = boton.dataset.surtidoWaAbrir || boton.dataset.surtidoWaPagar || boton.dataset.surtidoWaAvanzar;
+  const pedido = surtidos.find(p => p.idFirestore === id);
+  if (!pedido || !esPedidoCanalWhatsapp(pedido)) return;
+  if (boton.dataset.surtidoWaAbrir) abrirDetalle(pedido);
+  else if (boton.dataset.surtidoWaPagar) { surtidoActual = pedido; abrirPago(); }
+  else avanzarSurtidoWhatsapp(pedido, boton.dataset.estadoDestino);
+});
+function actualizarVistaSurtidosWhatsapp() {
+  const container = $("#whatsappSolicitudesContainer");
+  if (!container) return;
+  container.querySelectorAll(".wa-canal-surtidos").forEach(x => x.remove());
+  const buscar = normalizarTexto($("#waSearch")?.value || "");
+  const filtro = $("#waStatusFilter")?.value || "todos";
+  const pedidos = pedidosSurtidosWhatsapp().filter(p => {
+    const texto = normalizarTexto([p.folio,p.nombreCliente,p.clienteTelefono,p.vendedor,...(p.productos || []).map(x => x.nombre || x.clave)].join(" "));
+    return (!buscar || texto.includes(buscar)) && (filtro === "todos" || estadoCanalWhatsapp(p) === filtro);
+  }).sort((a,b) => fechaOrdenKanbanInicio(b) - fechaOrdenKanbanInicio(a));
+  if (pedidos.length && container.querySelector(".empty")) container.querySelector(".empty").remove();
+  container.insertAdjacentHTML("beforeend", pedidos.map(tarjetaCanalWhatsapp).join(""));
+  if (!pedidos.length && !container.children.length) container.innerHTML = '<div class="empty">No hay solicitudes para mostrar.</div>';
+  for (const [estado,id] of Object.entries({confirmar:"waCountConfirmar",pendiente_preparacion:"waCountPendiente",preparado:"waCountPreparado",listo:"waCountListo",finalizado:"waCountFinalizado"})) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = Number(el.textContent || 0) + pedidosSurtidosWhatsapp().filter(p => estadoCanalWhatsapp(p) === estado).length;
+  }
+}
+function actualizarKanbanSurtidosWhatsapp() {
+  const columnas = {confirmar:"waColumnConfirmar",pendiente_preparacion:"waColumnPendiente",preparado:"waColumnPreparado",listo:"waColumnListo",finalizado:"waColumnFinalizado"};
+  const buscar = normalizarTexto($("#waSearch")?.value || "");
+  for (const p of pedidosSurtidosWhatsapp().sort((a,b)=>fechaOrdenKanbanInicio(b)-fechaOrdenKanbanInicio(a))) {
+    const columna = document.getElementById(columnas[estadoCanalWhatsapp(p)]);
+    const texto = normalizarTexto([p.folio,p.nombreCliente,p.clienteTelefono,...(p.productos || []).map(x=>x.nombre || x.clave)].join(" "));
+    const filtroEstado = $("#waStatusFilter")?.value || "todos";
+    if (!columna || (buscar && !texto.includes(buscar)) || (filtroEstado !== "todos" && estadoCanalWhatsapp(p) !== filtroEstado)) continue;
+    columna.insertAdjacentHTML("beforeend", `<div class="wa-canal-kanban">${tarjetaCanalWhatsapp(p)}</div>`);
+  }
+}
+
 // Inicio unificado: reutiliza las fuentes Firestore ya suscritas y NO escribe duplicados.
 let vistaInicioActual = "tarjetas";
 // Cada columna conserva su búsqueda aunque Firebase vuelva a renderizar el tablero.
@@ -4987,7 +5103,7 @@ function textoBusquedaKanbanInicio(item) {
 
 const estadosInicio = ["En proceso", "En ruta / preparación", "Entregado", "Finalizado", "Cancelado"];
 function estadoColumnaInicio(item) {
-  const e = String(item.estado || "").toUpperCase();
+  const e = String(esPedidoCanalWhatsapp(item) ? estadoCanalWhatsapp(item) : item.estado || "").toUpperCase();
   if (["CANCELADO", "CANCELADA"].includes(e)) return 4;
   if (["FINALIZADO", "FINALIZADA"].includes(e)) return 3;
   if (["ENTREGADO", "ENTREGADA", "LISTO", "LISTO_ENTREGA"].includes(e)) return 2;
@@ -5001,7 +5117,9 @@ function pedidosInicioUnificados() {
   const filtroPago = $("#filtroPago")?.value || "";
   const filtroMetodo = $("#filtroMetodo")?.value || "";
   const filtroDevolucion = $("#filtroDevolucion")?.value || "";
+  const filtroCanal = $("#filtroCanalVenta")?.value || "";
   const whatsapp = solicitudesWhatsapp.filter(p => {
+    if (filtroCanal === "DIRECTO") return false;
     if (p.eliminado === true) return false;
     const contenido = [p.referencia, p.cliente, p.vendedor, p.grupo, ...(p.productos || []).map(x => x.nombre || x.descripcion || x.clave)].filter(Boolean).join(" ").toLowerCase();
     if (texto && !contenido.includes(texto)) return false;
@@ -5018,15 +5136,24 @@ function tarjetaInicio(item) {
   const wa = item.origenInicio === "WHATSAPP";
   const folio = wa ? item.referencia : item.folio;
   const cliente = wa ? item.cliente : item.nombreCliente;
-  const estado = wa ? (ESTADOS_WHATSAPP_LABELS[normalizarEstadoWhatsapp(item.estado)] || item.estado) : textoEstado(item.estado);
+  const estado = wa || esPedidoCanalWhatsapp(item) ? (ESTADOS_WHATSAPP_LABELS[wa ? normalizarEstadoWhatsapp(item.estado) : estadoCanalWhatsapp(item)] || item.estado) : textoEstado(item.estado);
   const productos = (item.productos || []).map(p => `${p.cantidad || 1} × ${p.nombre || p.descripcion || p.clave || "Producto"}`).join(", ");
   const el = document.createElement("article");
   el.className = "inicio-pedido-card";
-  el.innerHTML = `<div class="inicio-pedido-head"><strong>${escapeHtml(folio || "Sin folio")}</strong>${wa ? `<span class="inicio-origen wa"><i class="fa-brands fa-whatsapp"></i> WhatsApp</span>` : ""}</div><p>${escapeHtml(cliente || "Sin cliente")}</p><small>${escapeHtml(estado || "Sin estado")} · ${escapeHtml(item.vendedor || "Sin vendedor")}</small><p class="inicio-productos">${escapeHtml(productos || "Sin productos")}</p><button type="button" class="secondary">${wa ? "Abrir en WhatsApp" : "Ver pedido"}</button>`;
+  el.innerHTML = `<div class="inicio-pedido-head"><strong>${escapeHtml(folio || "Sin folio")}</strong>${wa || esPedidoCanalWhatsapp(item) ? `<span class="inicio-origen wa"><i class="fa-brands fa-whatsapp"></i> WhatsApp</span>` : ""}</div><p>${escapeHtml(cliente || "Sin cliente")}</p><small>${escapeHtml(estado || "Sin estado")} · ${escapeHtml(item.vendedor || "Sin vendedor")}</small><p class="inicio-productos">${escapeHtml(productos || "Sin productos")}</p><button type="button" class="secondary">${wa ? "Abrir en WhatsApp" : "Ver pedido"}</button>`;
   el.querySelector("button").addEventListener("click", () => {
     if (wa) { mostrarVistaWhatsapp(); return; }
     abrirDetalle(surtidos.find(p => p.idFirestore === item.idFirestore) || item);
   });
+  if (!wa && esPedidoCanalWhatsapp(item)) {
+    const siguiente = obtenerSiguienteEstadoWhatsapp(estadoCanalWhatsapp(item));
+    if (siguiente) {
+      const boton = document.createElement("button");
+      boton.type = "button"; boton.className = "secondary"; boton.textContent = siguiente[1];
+      boton.addEventListener("click", () => avanzarSurtidoWhatsapp(item, siguiente[0]));
+      el.appendChild(boton);
+    }
+  }
   return el;
 }
 // Orden cronológico descendente para cada columna del Kanban (más reciente primero).
@@ -6322,6 +6449,11 @@ if (!columna) {
 
   actualizarContadoresKanbanWhatsapp();
   configurarInteraccionesKanbanWhatsapp();
+  actualizarKanbanSurtidosWhatsapp();
+  for (const [estado, id] of Object.entries({confirmar:"waKanbanCountConfirmar", pendiente_preparacion:"waKanbanCountPendiente", preparado:"waKanbanCountPreparado", listo:"waKanbanCountListo", finalizado:"waKanbanCountFinalizado"})) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = Number(el.textContent || 0) + pedidosSurtidosWhatsapp().filter(p => estadoCanalWhatsapp(p) === estado).length;
+  }
 
 }
 
@@ -10119,3 +10251,6 @@ document
       cambiarPestanaReporte(boton.dataset.reporte);
     });
   });
+
+// Filtro de canal integrado al panel principal.
+document.getElementById("filtroCanalVenta")?.addEventListener("change", () => renderLista());

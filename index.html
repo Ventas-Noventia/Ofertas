@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Control de pedidos</title>
-  <link rel="stylesheet" href="styles.css?v=30-noventia-topbar" />
+  <link rel="stylesheet" href="styles.css?v=32-whatsapp-fix-20261015" />
   <link rel="stylesheet" href="reportes/reportes.css?v=1">
 </head>
 <body>
@@ -105,6 +105,7 @@
         <option value="EFECTIVO">Efectivo</option>
         <option value="TRANSFERENCIA">Transferencia</option>
       </select>
+      <select id="filtroCanalVenta" aria-label="Filtrar por canal de venta"><option value="">Todos los canales</option><option value="WHATSAPP">Solo WhatsApp</option><option value="DIRECTO">Ventas directas</option></select>
       <select id="filtroDevolucion">
         <option value="">Todos los pedidos</option>
         <option value="CON_DEVOLUCION">Con devoluciones</option>
@@ -789,6 +790,7 @@
         </label>
 
         <input id="tipoOperacion" type="hidden" />
+        <label class="span-2 canal-whatsapp-opcion"><input id="ventaPorWhatsapp" type="checkbox" /> <span><strong>Venta realizada por WhatsApp</strong><small>Se gestionará en WhatsApp y en el Panel principal, sin duplicar el pedido.</small></span></label>
 
         <div class="span-2 client-picker">
           <label>
@@ -1684,7 +1686,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="app.js?v=31-correccion-pestanas"></script>
+  <script type="module" src="app.js?v=32-whatsapp-fix-20261015"></script>
   </div>
 
 <script>

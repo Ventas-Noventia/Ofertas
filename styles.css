@@ -2704,3 +2704,26 @@ body.menu-open { overflow: auto; }
   outline: 2px solid #00b8c4;
   outline-offset: 1px;
 }
+
+/* Canal WhatsApp para pedidos capturados en surtidos */
+.canal-whatsapp-opcion{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid #d6e5db;border-radius:12px;background:#f3faf5;cursor:pointer}
+.canal-whatsapp-opcion input{width:19px;height:19px;flex:0 0 19px;accent-color:#18834b}
+.canal-whatsapp-opcion span{display:grid;gap:4px}.canal-whatsapp-opcion small{font-weight:400;color:#5e7064}
+.wa-canal-surtidos{border:1px solid #cce5d5}.wa-canal-detalle{margin:12px 0;color:#536274;font-size:13px}
+.wa-canal-montos{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin:10px 0;color:#526175}
+.wa-canal-kanban .whatsapp-order-card{min-width:0;padding:12px}.wa-canal-kanban .whatsapp-order-bottom{display:flex;flex-wrap:wrap;gap:6px}
+.wa-canal-kanban button{font-size:12px;padding:8px 10px}.wa-estado-en-panel{display:block;margin:7px 0;color:#16834b;font-weight:700}
+@media(max-width:640px){.canal-whatsapp-opcion{align-items:flex-start}.wa-canal-montos{flex-direction:column;gap:5px}}
+
+/* Identificación visible del canal WhatsApp en ambas pantallas */
+.pedido-canal-whatsapp { border-left: 4px solid #22a765 !important; }
+.inicio-origen.wa { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; background: #dcfce7; color: #166534; font-weight: 800; font-size: 12px; white-space: nowrap; }
+.wa-estado-en-panel { display: block; color: #166534; font-weight: 700; margin: 8px 0; }
+.whatsapp-order-card.wa-canal-surtidos { border-left: 4px solid #22a765; }
+
+/* Distintivo visible de canal WhatsApp y filtro del panel */
+.pedido-canal-whatsapp{border-left:5px solid #22a765!important;background:linear-gradient(90deg,#f1fff6 0%,#fff 30%)}
+.pedido-canal-whatsapp .inicio-origen.wa{font-weight:900;box-shadow:0 0 0 1px #9bdbb4}
+.toolbar-payments{grid-template-columns:minmax(230px,1fr) repeat(5,minmax(130px,190px))}
+@media(max-width:1200px){.toolbar-payments{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.toolbar-payments{grid-template-columns:1fr}}
