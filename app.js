@@ -5356,25 +5356,25 @@ $("#btnNuevoClientePantalla")?.addEventListener("click", () => {
   abrirNuevoCliente();
 });
 $("#btnVolverInicioWhatsapp")?.addEventListener("click", mostrarVistaPedidos);
-$("#btnAlmacen").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("ALM"); });
-$("#btnBazar").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("BAZ"); });
-$("#btnVentaRapida").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("VR"); });
+$("#btnAlmacen")?.addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("ALM"); });
+$("#btnBazar")?.addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("BAZ"); });
+$("#btnVentaRapida")?.addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("VR"); });
 
-$("#btnReporteCaja").addEventListener("click", abrirReporteCaja);
-$("#btnVolverPedidosCaja").addEventListener("click", () => {
+$("#btnReporteCaja")?.addEventListener("click", abrirReporteCaja);
+$("#btnVolverPedidosCaja")?.addEventListener("click", () => {
   mostrarVistaPedidos();
   document
     .querySelectorAll(".sidebar-link.active")
     .forEach(elemento => elemento.classList.remove("active"));
   $("#btnPanelPrincipal")?.classList.add("active");
 });
-$("#btnExportar").addEventListener("click", exportarPedidos);
-$("#periodoCaja").addEventListener("change", () => {
+$("#btnExportar")?.addEventListener("click", exportarPedidos);
+$("#periodoCaja")?.addEventListener("change", () => {
   actualizarCamposPeriodoCaja();
   consultarCaja();
 });
-$("#metodoCaja").addEventListener("change", consultarCaja);
-$("#btnAplicarCaja").addEventListener("click", consultarCaja);
+$("#metodoCaja")?.addEventListener("change", consultarCaja);
+$("#btnAplicarCaja")?.addEventListener("click", consultarCaja);
 $("#btnAgregarProducto").addEventListener("click", agregarProducto);
 $("#productoClave").addEventListener("keydown", manejarLecturaCodigo);
 
