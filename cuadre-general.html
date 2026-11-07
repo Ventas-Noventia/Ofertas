@@ -1,0 +1,38 @@
+<section id="panelCuadreCaja" class="hidden">
+  <div class="cuadre-header">
+    <div>
+      <h2>Cuadre general</h2>
+      <p>Ingresos menos devoluciones y gastos del periodo.</p>
+    </div>
+    <button id="btnExportarCuadre" type="button" class="primary">
+      Descargar cuadre en Excel
+    </button>
+  </div>
+
+  <section class="cash-summary cuadre-summary">
+    <article><small>Ingresos</small><strong id="cuadreIngresos">$0.00</strong></article>
+    <article><small>Ajustes por devolución</small><strong id="cuadreDevoluciones">$0.00</strong></article>
+    <article><small>Gastos</small><strong id="cuadreGastos">$0.00</strong></article>
+    <article><small>Saldo del periodo</small><strong id="cuadreSaldo">$0.00</strong></article>
+  </section>
+
+  <div class="cash-table-wrap">
+    <table class="cash-table">
+      <thead>
+        <tr>
+          <th>Tipo de pago</th>
+          <th>Ingresos</th>
+          <th>Devoluciones</th>
+          <th>Gastos</th>
+          <th>Saldo</th>
+        </tr>
+      </thead>
+      <tbody id="tablaCuadre"></tbody>
+    </table>
+  </div>
+
+  <p class="cuadre-nota">
+    El saldo corresponde únicamente al periodo seleccionado. No incluye fondo
+    inicial ni saldos anteriores. Las cancelaciones no generan salidas automáticas.
+  </p>
+</section>

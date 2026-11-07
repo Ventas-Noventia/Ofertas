@@ -1,0 +1,222 @@
+#modalCaja .reportes-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #dce6e5;
+  border-radius: 14px;
+}
+
+#modalCaja .reporte-tab {
+  flex: 1;
+  min-width: 140px;
+  padding: 12px 18px;
+  background: transparent;
+  color: var(--nov-navy, #173f49);
+  border-radius: 10px;
+}
+
+#modalCaja .reporte-tab.active {
+  background: var(--nov-navy, #173f49);
+  color: #fff;
+}
+
+#modalCaja .reporte-tab:focus-visible {
+  outline: 3px solid #9fdaca;
+  outline-offset: 2px;
+}
+
+#panelGastosCaja .gastos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+#panelGastosCaja .gastos-header h2 {
+  margin: 0;
+}
+
+#panelGastosCaja .gastos-header p {
+  margin: 5px 0 0;
+  color: #6d7585;
+}
+
+#panelGastosCaja .gasto-form-card {
+  padding: 20px;
+  margin-bottom: 22px;
+  background: #fff;
+  border: 1px solid #dce6e5;
+  border-radius: 14px;
+}
+
+#panelGastosCaja .gasto-check {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+
+#panelGastosCaja .gastos-summary {
+  margin-top: 20px;
+}
+
+#panelGastosCaja .gasto-action {
+  padding: 7px 10px;
+  margin: 2px;
+}
+
+#panelGastosCaja #visorComprobanteGasto {
+  width: min(980px, calc(100% - 24px));
+}
+
+#panelGastosCaja #pdfComprobanteGasto {
+  width: 100%;
+  height: min(72vh, 820px);
+  border: 1px solid #dce6e5;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+#mensajeGasto {
+  min-height: 22px;
+  margin-top: 12px;
+  font-weight: 700;
+}
+
+#mensajeGasto.form-error {
+  color: #b42318;
+}
+
+#mensajeGasto.form-success {
+  color: #087443;
+}
+
+#visorComprobanteGasto {
+  width: min(900px, calc(100% - 24px));
+}
+
+#imagenComprobanteGasto {
+  display: block;
+  max-width: 100%;
+  max-height: 75vh;
+  margin: 12px auto 0;
+  object-fit: contain;
+}
+
+@media (max-width: 650px) {
+  #panelGastosCaja .gastos-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* Detalle de pedido exclusivo del Corte de Caja */
+#panelCorteCaja .caja-action-cell {
+  white-space: nowrap;
+}
+
+#panelCorteCaja .btn-ver-pedido-caja {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+}
+
+#modalDetallePedidoCaja {
+  width: min(560px, calc(100% - 28px));
+  max-height: 85vh;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+#modalDetallePedidoCaja::backdrop {
+  background: rgba(15, 23, 42, 0.58);
+}
+
+#modalDetallePedidoCaja .detalle-caja-contenido {
+  padding: 22px;
+  background: #fff;
+}
+
+#modalDetallePedidoCaja .detalle-caja-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+#modalDetallePedidoCaja .detalle-caja-header h2,
+#modalDetallePedidoCaja .detalle-caja-productos-wrap h3 {
+  margin: 0;
+}
+
+#modalDetallePedidoCaja .detalle-caja-datos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+#modalDetallePedidoCaja .detalle-caja-datos > div {
+  padding: 14px;
+  border: 1px solid #dce6e5;
+  border-radius: 12px;
+}
+
+#modalDetallePedidoCaja .detalle-caja-datos small {
+  display: block;
+  margin-bottom: 5px;
+  color: #6d7585;
+}
+
+#modalDetallePedidoCaja .detalle-caja-productos-wrap {
+  margin-bottom: 20px;
+}
+
+#modalDetallePedidoCaja .detalle-caja-productos {
+  max-height: 340px;
+  margin-top: 12px;
+  overflow-y: auto;
+  border-top: 1px solid #e5e7eb;
+}
+
+#modalDetallePedidoCaja .detalle-caja-producto {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 2px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+#modalDetallePedidoCaja .detalle-caja-producto-nombre {
+  font-weight: 700;
+}
+
+#modalDetallePedidoCaja .detalle-caja-producto-cantidad {
+  flex: 0 0 auto;
+  color: #6d7585;
+}
+
+#modalDetallePedidoCaja .detalle-caja-vacio {
+  margin: 14px 0;
+  color: #6d7585;
+}
+
+@media (max-width: 650px) {
+  #modalDetallePedidoCaja .detalle-caja-datos {
+    grid-template-columns: 1fr;
+  }
+
+  #modalDetallePedidoCaja .detalle-caja-producto {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}
