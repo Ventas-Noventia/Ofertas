@@ -29,5 +29,12 @@ service cloud.firestore {
       allow read, create, update: if validRole();
       allow delete: if false;
     }
+
+    match /clientes/{clienteId} {
+      allow read: if validRole();
+      allow create: if validRole();
+      allow update: if validRole();
+      allow delete: if isAdmin();
+    }
   }
 }

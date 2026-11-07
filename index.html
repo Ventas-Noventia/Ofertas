@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Control de pedidos</title>
-  <link rel="stylesheet" href="styles.css?v=32-whatsapp-fix-20261015" />
+  <link rel="stylesheet" href="styles.css?v=33-clientes-cambio-20261107" />
   <link rel="stylesheet" href="reportes/reportes.css?v=1">
 </head>
 <body>
@@ -34,15 +34,16 @@
     <nav class="sidebar-nav">
       <p class="sidebar-section-title">Navegación</p>
       <button id="btnPanelPrincipal" class="sidebar-link active" type="button"><span>Panel de control</span></button>
-      <button id="btnListaPedidos" class="sidebar-link" type="button"><span>Lista de pedidos</span></button>
+      <!-- <button id="btnListaPedidos" class="sidebar-link" type="button"><span>Lista de pedidos</span></button> -->
       <p class="sidebar-section-title nav-sales-label">Nueva venta</p>
       <button id="btnAlmacen" class="sidebar-link" type="button"><span>Venta de almacén</span></button>
       <button id="btnBazar" class="sidebar-link" type="button"><span>Venta de bazar</span></button>
       <button id="btnVentaRapida" class="sidebar-link" type="button"><span>Venta rápida</span></button>
       <button id="btnWhatsapp" class="sidebar-link" type="button"><span>Solicitudes WhatsApp</span></button>
+      <button id="btnClientes" class="sidebar-link" type="button"><span>Clientes registrados</span></button>
 
       <p class="sidebar-section-title">Administración</p>
-      <button id="btnReporteCaja" data-admin-only class="sidebar-link" type="button"><span>Reporte de caja</span></button>
+      <!-- <button id="btnReporteCaja" data-admin-only class="sidebar-link" type="button"><span>Reporte de caja</span></button> -->
       <button id="btnExportar" data-admin-only class="sidebar-link" type="button"><span>Exportar pedidos</span></button>
       <button id="btnGestionUsuarios" data-admin-only class="sidebar-link" type="button"><span>Cuentas y roles</span></button>
       <button id="btnCargaClientes" class="sidebar-link hidden" type="button"><span>Carga de clientes</span></button>
@@ -119,6 +120,32 @@
       <div id="listaSurtidos" class="cards"></div>
       <div id="inicioKanban" class="inicio-kanban hidden" aria-label="Pedidos por estado"></div>
       <div id="sinResultados" class="empty hidden">No hay pedidos para mostrar.</div>
+    </section>
+  </main>
+
+  <main id="vistaClientes" class="container hidden">
+    <div class="volver-inicio-barra"><button id="btnVolverInicioClientes" type="button" class="secondary"><i class="fa-solid fa-arrow-left"></i> Volver al panel de control</button></div>
+    <section class="clients-page-header">
+      <div>
+        <h1>Clientes registrados</h1>
+        <p>Consulta los datos y el historial de compras de tus clientes.</p>
+      </div>
+      <button id="btnNuevoClientePantalla" type="button" class="primary"><i class="fa-solid fa-user-plus"></i> Nuevo cliente</button>
+    </section>
+    <section class="clients-page-stats">
+      <article><strong id="clientesTotalRegistrados">0</strong><small>Clientes activos</small></article>
+      <article><strong id="clientesConCompras">0</strong><small>Con compras registradas</small></article>
+      <article><strong id="clientesVentasTotales">$0.00</strong><small>Ventas acumuladas</small></article>
+    </section>
+    <section class="clients-page-toolbar">
+      <input id="buscadorClientes" type="search" placeholder="Buscar por nombre, teléfono o dirección" />
+    </section>
+    <section class="clients-table-wrap">
+      <table class="clients-table">
+        <thead><tr><th>Cliente</th><th>Teléfono</th><th>Dirección</th><th>Compras</th><th>Total comprado</th><th>Última compra</th></tr></thead>
+        <tbody id="tablaClientes"></tbody>
+      </table>
+      <p id="clientesSinResultados" class="client-empty hidden">No hay clientes que coincidan con la búsqueda.</p>
     </section>
   </main>
 
@@ -897,6 +924,18 @@
           Fecha del primer pago
           <input id="fechaPagoInicial" readonly />
         </label>
+
+        <section id="campoCalculoCambio" class="cash-change-card span-2 hidden" aria-live="polite">
+          <label>
+            Monto que entrega el cliente
+            <input id="montoRecibido" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" />
+          </label>
+          <div class="cash-change-result">
+            <span>Total a cobrar</span><strong id="totalCobrarCambio">$0.00</strong>
+            <span>Cambio a entregar</span><strong id="cambioEntregar">$0.00</strong>
+            <small id="mensajeCambio" class="hidden"></small>
+          </div>
+        </section>
       </div>
 
       <div class="product-heading">
@@ -1686,7 +1725,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="app.js?v=32-whatsapp-fix-20261015"></script>
+  <script type="module" src="app.js?v=34-gastos-pdf-20261107"></script>
   </div>
 
 <script>

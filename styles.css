@@ -797,6 +797,33 @@ button{
 .client-import-table tr.duplicate { color: #8a6500; background: #fffbed; }
 .client-import-result { padding: 13px; color: #285943; background: #e7f5f2; border-radius: 10px; }
 
+.cash-change-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr); gap: 18px; padding: 16px; border: 1px solid #9dd7ca; border-radius: 14px; background: #eefaf7; }
+.cash-change-card.hidden { display: none; }
+.cash-change-result { display: grid; grid-template-columns: 1fr auto; gap: 7px 14px; align-items: center; padding: 12px 14px; border-radius: 11px; background: #fff; }
+.cash-change-result span { color: #64748b; font-size: 13px; }
+.cash-change-result strong { color: #063a4a; font-size: 18px; text-align: right; }
+.cash-change-result small { grid-column: 1 / -1; color: #a12727; font-weight: 700; }
+.cash-change-card.cash-insufficient { border-color: #e3a3a3; background: #fff5f5; }
+.clients-page-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
+.clients-page-header h1 { margin: 0; }
+.clients-page-header p { margin: 5px 0 0; color: #64748b; }
+.clients-page-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+.clients-page-stats article { padding: 18px; border: 1px solid #dce6e5; border-radius: 14px; background: #fff; }
+.clients-page-stats strong { display: block; color: #063a4a; font-size: 25px; }
+.clients-page-stats small { color: #64748b; }
+.clients-page-toolbar { margin-bottom: 14px; }
+.clients-page-toolbar input { width: min(100%, 520px); }
+.clients-table-wrap { overflow: auto; border: 1px solid #dce6e5; border-radius: 14px; background: #fff; }
+.clients-table { width: 100%; min-width: 850px; border-collapse: collapse; }
+.clients-table th, .clients-table td { padding: 13px 15px; border-bottom: 1px solid #edf2f1; text-align: left; }
+.clients-table th { color: #52616b; background: #f5f9f8; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+.clients-table td { color: #334155; }
+.client-purchase-count { display: inline-grid; min-width: 30px; height: 30px; place-items: center; border-radius: 999px; color: #075e54; background: #ddf5ef; font-weight: 800; }
+@media (max-width: 700px) {
+  .cash-change-card, .clients-page-stats { grid-template-columns: 1fr; }
+  .clients-page-header { align-items: stretch; flex-direction: column; }
+}
+
 @media (max-width: 520px) {
   .client-input-row { grid-template-columns: 1fr; }
   .client-add-button { width: 100%; }

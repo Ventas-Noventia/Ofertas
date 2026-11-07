@@ -650,9 +650,56 @@ function iniciarEscuchaClientes() {
       .map(documento => ({ id: documento.id, ...documento.data() }))
       .filter(cliente => cliente.activo !== false)
       .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+    renderPantallaClientes();
   }, error => {
     console.error("No se pudo cargar el catálogo de clientes:", error);
   });
+}
+
+function comprasDeCliente(cliente) {
+  const telefono = String(cliente.telefono || "").replace(/\D/g, "");
+  const nombre = normalizarTexto(cliente.nombre);
+  return surtidos.filter(pedido => {
+    if (pedido.eliminado === true) return false;
+    if (cliente.id && pedido.clienteId === cliente.id) return true;
+    const telefonoPedido = String(pedido.clienteTelefono || "").replace(/\D/g, "");
+    if (telefono && telefonoPedido && telefono === telefonoPedido) return true;
+    return nombre && normalizarTexto(pedido.nombreCliente) === nombre;
+  });
+}
+
+function renderPantallaClientes() {
+  const cuerpo = $("#tablaClientes");
+  if (!cuerpo) return;
+  const busqueda = normalizarTexto($("#buscadorClientes")?.value || "");
+  const filas = clientesFrecuentes.map(cliente => {
+    const compras = comprasDeCliente(cliente);
+    const total = compras.reduce((suma, pedido) => suma + Number(pedido.total || 0), 0);
+    const ultima = compras.slice().sort((a, b) => String(b.fechaPedido || "").localeCompare(String(a.fechaPedido || "")))[0];
+    return { cliente, compras, total, ultima };
+  });
+  const visibles = filas.filter(({ cliente }) => !busqueda || [cliente.nombre, cliente.telefono, cliente.direccion].some(valor => normalizarTexto(valor).includes(busqueda)));
+  cuerpo.innerHTML = visibles.map(({ cliente, compras, total, ultima }) => `
+    <tr>
+      <td><strong>${escapeHtml(cliente.nombre || "Cliente sin nombre")}</strong></td>
+      <td>${escapeHtml(cliente.telefono || "Sin teléfono")}</td>
+      <td>${escapeHtml(cliente.direccion || "Sin dirección")}</td>
+      <td><span class="client-purchase-count">${compras.length}</span></td>
+      <td><strong>${moneda(total)}</strong></td>
+      <td>${ultima ? escapeHtml(fechaPedidoTexto(ultima)) : "Sin compras"}</td>
+    </tr>`).join("");
+  $("#clientesSinResultados").classList.toggle("hidden", visibles.length > 0);
+  $("#clientesTotalRegistrados").textContent = clientesFrecuentes.length;
+  $("#clientesConCompras").textContent = filas.filter(fila => fila.compras.length > 0).length;
+  $("#clientesVentasTotales").textContent = moneda(filas.reduce((suma, fila) => suma + fila.total, 0));
+}
+
+function mostrarVistaClientes() {
+  modalCaja.classList.add("hidden");
+  $("#vistaPedidos")?.classList.add("hidden");
+  $("#vistaWhatsapp")?.classList.add("hidden");
+  $("#vistaClientes")?.classList.remove("hidden");
+  renderPantallaClientes();
 }
 
 function ocultarResultadosClientes() {
@@ -1566,7 +1613,7 @@ async function abrirReporteCaja() {
 
   try {
     const { cargarVistasReporte } = await import(
-      "./reportes/reportes.js?v=2"
+      "./reportes/reportes.js?v=3-pdf"
     );
 
     await cargarVistasReporte({
@@ -2479,6 +2526,7 @@ function iniciarEscuchaPedidos() {
     renderLista();
     renderInicioUnificado();
     renderSolicitudesWhatsapp();
+    renderPantallaClientes();
     if (!$("#waVistaKanban")?.classList.contains("hidden")) renderKanbanWhatsapp();
     actualizarCajaSiEstaAbierta();
 
@@ -2980,6 +3028,24 @@ function actualizarTotalNuevo() {
   $("#descuentoNuevo").textContent = `-${moneda(resumen.montoDescuento)}`;
   $("#envioNuevo").textContent = moneda(envio);
   $("#totalNuevo").textContent = moneda(resumen.subtotalConDescuento + envio);
+  actualizarCalculoCambio();
+}
+
+function actualizarCalculoCambio() {
+  const panel = $("#campoCalculoCambio");
+  if (!panel) return;
+  const aplica = $("#estatusPago").value === "PAGADO" && $("#metodoPagoInicial").value === "EFECTIVO";
+  panel.classList.toggle("hidden", !aplica);
+  const total = totalNuevoPedido();
+  const recibido = Number($("#montoRecibido").value || 0);
+  const diferencia = recibido - total;
+  $("#totalCobrarCambio").textContent = moneda(total);
+  $("#cambioEntregar").textContent = moneda(Math.max(0, diferencia));
+  const mensaje = $("#mensajeCambio");
+  const insuficiente = aplica && recibido > 0 && diferencia < -0.009;
+  mensaje.textContent = insuficiente ? `Faltan ${moneda(Math.abs(diferencia))} para completar el pago.` : "";
+  mensaje.classList.toggle("hidden", !insuficiente);
+  panel.classList.toggle("cash-insufficient", insuficiente);
 }
 
 function actualizarModoDescuentoNuevo() {
@@ -3531,6 +3597,14 @@ function validarPedido() {
       return false;
     }
   }
+  if ($("#estatusPago").value === "PAGADO" && $("#metodoPagoInicial").value === "EFECTIVO") {
+    const recibido = Number($("#montoRecibido").value);
+    if (!Number.isFinite(recibido) || recibido < total) {
+      alert(`El monto recibido debe ser igual o mayor al total de ${moneda(total)}.`);
+      $("#montoRecibido").focus();
+      return false;
+    }
+  }
   return true;
 }
 
@@ -3556,12 +3630,16 @@ async function guardarPedido(imprimir) {
     ? Number($("#montoApartado").value)
     : estatusPago === "PAGADO" ? total : 0;
   const metodoInicial = $("#metodoPagoInicial").value;
+  const montoRecibido = estatusPago === "PAGADO" && metodoInicial === "EFECTIVO"
+    ? Number($("#montoRecibido").value || 0) : 0;
+  const cambioEntregado = montoRecibido > 0 ? Math.max(0, montoRecibido - total) : 0;
   const pagoInicial = tienePagoInicial ? {
     id: crypto.randomUUID(),
     monto: montoInicial,
     metodo: metodoInicial,
     fecha: $("#fechaPagoInicial").value,
-    fechaISO: new Date().toISOString()
+    fechaISO: new Date().toISOString(),
+    ...(montoRecibido > 0 ? { montoRecibido, cambioEntregado } : {})
   } : null;
 
   const registro = {
@@ -3598,6 +3676,7 @@ async function guardarPedido(imprimir) {
     descuentoTotal: resumen.montoDescuento,
     costoEnvio,
     total,
+    ...(montoRecibido > 0 ? { montoRecibido, cambioEntregado } : {}),
     estado,
     creadoPorUid: usuarioActual?.uid || "",
     creadoPorNombre: perfilActual?.nombre || usuarioActual?.email || "",
@@ -4501,10 +4580,13 @@ function actualizarCamposPagoInicial() {
   $("#fechaPagoInicial").value = hayPago ? fechaSoloDia() : "";
 
   if (!(apartado || esKEfectivo)) $("#montoApartado").value = "";
+  actualizarCalculoCambio();
 }
 
 $("#estatusPago").addEventListener("change", actualizarCamposPagoInicial);
 $("#estatusPago").addEventListener("input", actualizarCamposPagoInicial);
+$("#metodoPagoInicial").addEventListener("change", actualizarCalculoCambio);
+$("#montoRecibido").addEventListener("input", actualizarCalculoCambio);
 
 function configurarEstadosIniciales(tipoOperacion) {
   const selector = $("#estadoInicial");
@@ -4580,6 +4662,8 @@ function abrirNuevoPedido(tipoOperacion) {
   $("#etiquetaMontoInicial").textContent = "Cantidad del primer apartado";
   $("#campoFechaPago").classList.add("hidden");
   $("#fechaPagoInicial").value = fechaSoloDia();
+  $("#montoRecibido").value = "";
+  $("#campoCalculoCambio").classList.add("hidden");
   actualizarCamposPagoInicial();
   mostrarMensajeProducto("");
 
@@ -5252,17 +5336,25 @@ document.querySelectorAll("[data-inicio-accion]").forEach(boton => boton.addEven
 function mostrarVistaPedidos() {
   modalCaja.classList.add("hidden");
   $("#vistaWhatsapp")?.classList.add("hidden");
+  $("#vistaClientes")?.classList.add("hidden");
   $("#vistaPedidos")?.classList.remove("hidden");
 }
 
 function mostrarVistaWhatsapp() {
   modalCaja.classList.add("hidden");
   $("#vistaPedidos")?.classList.add("hidden");
+  $("#vistaClientes")?.classList.add("hidden");
   $("#vistaWhatsapp")?.classList.remove("hidden");
   renderSolicitudesWhatsapp();
 }
 
 $("#btnPanelPrincipal")?.addEventListener("click", mostrarVistaPedidos);
+$("#btnClientes")?.addEventListener("click", mostrarVistaClientes);
+$("#btnVolverInicioClientes")?.addEventListener("click", mostrarVistaPedidos);
+$("#buscadorClientes")?.addEventListener("input", renderPantallaClientes);
+$("#btnNuevoClientePantalla")?.addEventListener("click", () => {
+  abrirNuevoCliente();
+});
 $("#btnVolverInicioWhatsapp")?.addEventListener("click", mostrarVistaPedidos);
 $("#btnAlmacen").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("ALM"); });
 $("#btnBazar").addEventListener("click", () => { mostrarVistaPedidos(); abrirNuevoPedido("BAZ"); });
