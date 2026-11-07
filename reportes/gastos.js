@@ -19,6 +19,14 @@ import {
   getApp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 
+import {
+  deleteObject,
+  getDownloadURL,
+  getStorage,
+  ref as storageRef,
+  uploadBytes
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
+
 
 let iniciado = false;
 let guardando = false;
@@ -37,6 +45,7 @@ const $ = selector => document.querySelector(selector);
 
 const db = getFirestore(getApp());
 const auth = getAuth(getApp());
+const storage = getStorage(getApp());
 
 
 export function inicializarGastos() {
@@ -312,12 +321,17 @@ async function guardarGasto(event) {
   mostrarMensaje("Guardando gasto…");
 
   try {
-    const imagen = archivo
-      ? await comprimirImagen(archivo)
-      : null;
-
     const referenciaGasto =
       doc(collection(db, "gastos"));
+
+    let comprobante = null;
+
+    if (archivo) {
+      comprobante = await prepararYSubirComprobante(
+        archivo,
+        referenciaGasto.id
+      );
+    }
 
     const lote = writeBatch(db);
 
@@ -327,10 +341,11 @@ async function guardarGasto(event) {
       metodo,
       creadoEn: serverTimestamp(),
       creadoPor: usuario.uid,
-      tieneComprobante: Boolean(imagen)
+      tieneComprobante: Boolean(comprobante),
+      tipoComprobante: comprobante?.tipo || ""
     });
 
-    if (imagen) {
+    if (comprobante) {
       lote.set(
         doc(
           db,
@@ -338,7 +353,11 @@ async function guardarGasto(event) {
           referenciaGasto.id
         ),
         {
-          imagen,
+          url: comprobante.url,
+          ruta: comprobante.ruta,
+          tipo: comprobante.tipo,
+          nombre: comprobante.nombre,
+          tamano: comprobante.tamano,
           creadoEn: serverTimestamp(),
           creadoPor: usuario.uid
         }
@@ -360,7 +379,15 @@ async function guardarGasto(event) {
       );
     }
 
-    await lote.commit();
+    try {
+      await lote.commit();
+    } catch (error) {
+      if (comprobante?.ruta) {
+        await deleteObject(storageRef(storage, comprobante.ruta))
+          .catch(() => {});
+      }
+      throw error;
+    }
 
     $("#formGasto").reset();
     cambiarConcepto();
@@ -532,39 +559,50 @@ async function manejarComprobante(event) {
       );
     }
 
-    const imagen = resultado.data().imagen;
+    const datos = resultado.data();
+    const esLegacy = Boolean(datos.imagen);
+    const tipo = datos.tipo || "image/jpeg";
+    let url = datos.url || "";
 
-    if (
-      !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/
-        .test(imagen || "")
-    ) {
-      throw new Error(
-        "El formato del comprobante no es válido."
-      );
+    if (esLegacy) {
+      if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(datos.imagen || "")) {
+        throw new Error("El formato del comprobante no es válido.");
+      }
+      url = URL.createObjectURL(convertirDataUrlABlob(datos.imagen));
     }
 
-    const blob = convertirDataUrlABlob(imagen);
-    const url = URL.createObjectURL(blob);
+    if (!url) throw new Error("El archivo del comprobante no está disponible.");
 
     if (boton.dataset.verComprobante) {
       limpiarComprobante();
+      if (esLegacy) urlComprobanteActual = url;
 
-      urlComprobanteActual = url;
-
-      $("#imagenComprobanteGasto").src = url;
+      const esPdf = tipo === "application/pdf";
+      $("#imagenComprobanteGasto").classList.toggle("hidden", esPdf);
+      $("#pdfComprobanteGasto").classList.toggle("hidden", !esPdf);
+      if (esPdf) {
+        $("#pdfComprobanteGasto").src = url;
+      } else {
+        $("#imagenComprobanteGasto").src = url;
+      }
       $("#visorComprobanteGasto").showModal();
 
     } else {
+      const respuesta = await fetch(url);
+      if (!respuesta.ok) throw new Error("No se pudo descargar el archivo.");
+      const blob = await respuesta.blob();
+      const urlDescarga = URL.createObjectURL(blob);
       const enlace = document.createElement("a");
 
-      enlace.href = url;
-      enlace.download =
-        `comprobante-${gastoId}.jpg`;
+      enlace.href = urlDescarga;
+      enlace.download = datos.nombre ||
+        `comprobante-${gastoId}.${tipo === "application/pdf" ? "pdf" : "jpg"}`;
 
       enlace.click();
 
       setTimeout(() => {
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(urlDescarga);
+        if (esLegacy) URL.revokeObjectURL(url);
       }, 1000);
     }
 
@@ -597,6 +635,52 @@ function limpiarComprobante() {
 
   $("#imagenComprobanteGasto")
     .removeAttribute("src");
+  $("#pdfComprobanteGasto")
+    .removeAttribute("src");
+  $("#imagenComprobanteGasto").classList.remove("hidden");
+  $("#pdfComprobanteGasto").classList.add("hidden");
+}
+
+
+async function prepararYSubirComprobante(archivo, gastoId) {
+  const formatosPermitidos = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/pdf"
+  ];
+
+  if (!formatosPermitidos.includes(archivo.type)) {
+    throw new Error("El comprobante debe ser PDF, JPG, PNG o WebP.");
+  }
+
+  if (archivo.size > 10 * 1024 * 1024) {
+    throw new Error("El comprobante no puede superar 10 MB.");
+  }
+
+  const esPdf = archivo.type === "application/pdf";
+  const contenido = esPdf
+    ? archivo
+    : await convertirDataUrlABlob(await comprimirImagen(archivo));
+  const extension = esPdf ? "pdf" : "jpg";
+  const nombreSeguro = String(archivo.name || `comprobante.${extension}`)
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .slice(-100);
+  const ruta = `comprobantes-gastos/${gastoId}/${crypto.randomUUID()}.${extension}`;
+  const referencia = storageRef(storage, ruta);
+
+  await uploadBytes(referencia, contenido, {
+    contentType: esPdf ? "application/pdf" : "image/jpeg",
+    customMetadata: { gastoId, nombreOriginal: nombreSeguro }
+  });
+
+  return {
+    url: await getDownloadURL(referencia),
+    ruta,
+    tipo: esPdf ? "application/pdf" : "image/jpeg",
+    nombre: nombreSeguro,
+    tamano: contenido.size
+  };
 }
 
 

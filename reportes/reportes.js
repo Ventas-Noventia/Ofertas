@@ -112,7 +112,7 @@ async function cargarContenido({
     obtenerGastosRegistrados,
     aplicarFiltroGastos,
     suscribirCambiosGastos
-  } = await import("./gastos.js?v=2");
+  } = await import("./gastos.js?v=3-pdf");
 
   inicializarGastos();
 

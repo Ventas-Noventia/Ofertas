@@ -68,6 +68,18 @@
   margin: 2px;
 }
 
+#panelGastosCaja #visorComprobanteGasto {
+  width: min(980px, calc(100% - 24px));
+}
+
+#panelGastosCaja #pdfComprobanteGasto {
+  width: 100%;
+  height: min(72vh, 820px);
+  border: 1px solid #dce6e5;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
 #mensajeGasto {
   min-height: 22px;
   margin-top: 12px;

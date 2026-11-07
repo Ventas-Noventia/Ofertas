@@ -84,10 +84,10 @@
           <input
             id="comprobanteGasto"
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"
           >
           <small>
-            JPG, PNG o WebP. Máximo 10 MB.
+            PDF, JPG, PNG o WebP. Máximo 10 MB.
           </small>
         </label>
       </div>
@@ -174,5 +174,11 @@
       id="imagenComprobanteGasto"
       alt="Comprobante del gasto"
     >
+
+    <iframe
+      id="pdfComprobanteGasto"
+      class="hidden"
+      title="Comprobante PDF del gasto"
+    ></iframe>
   </dialog>
 </section>
