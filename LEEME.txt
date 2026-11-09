@@ -4,6 +4,11 @@ Actualización 07/11/2026
 - El registro de gastos acepta comprobantes en PDF, JPG, PNG y WebP.
 - Los nuevos comprobantes se guardan en Firebase Storage (máximo 10 MB).
 - El visor permite consultar imágenes y documentos PDF sin salir del sistema.
+- La sección Clientes registrados es exclusiva para administradores.
+- Los administradores pueden editar o eliminar clientes; al eliminarlos se
+  conserva su historial de ventas.
+- Se corrigió la navegación silenciosa al control de gastos: ya no depende de
+  que el botón conserve la clase visual "active".
 
 - Nueva pantalla "Clientes registrados" con búsqueda, datos de contacto,
   cantidad de compras, total comprado y fecha de última compra.

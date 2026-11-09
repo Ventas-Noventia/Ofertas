@@ -33,7 +33,7 @@ service cloud.firestore {
     match /clientes/{clienteId} {
       allow read: if validRole();
       allow create: if validRole();
-      allow update: if validRole();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
   }

@@ -34,14 +34,16 @@
     <nav class="sidebar-nav">
       <p class="sidebar-section-title">Navegación</p>
       <button id="btnPanelPrincipal" class="sidebar-link active" type="button"><span>Panel de control</span></button>
+      <button id="btnListaPedidos" class="sidebar-link" type="button"><span>Lista de pedidos</span></button>
       <p class="sidebar-section-title nav-sales-label">Nueva venta</p>
       <button id="btnAlmacen" class="sidebar-link" type="button"><span>Venta de almacén</span></button>
       <button id="btnBazar" class="sidebar-link" type="button"><span>Venta de bazar</span></button>
       <button id="btnVentaRapida" class="sidebar-link" type="button"><span>Venta rápida</span></button>
       <button id="btnWhatsapp" class="sidebar-link" type="button"><span>Solicitudes WhatsApp</span></button>
-      <button id="btnClientes" class="sidebar-link" type="button"><span>Clientes registrados</span></button>
+      <button id="btnClientes" data-admin-only class="sidebar-link" type="button"><span>Clientes registrados</span></button>
 
       <p class="sidebar-section-title">Administración</p>
+      <button id="btnReporteCaja" data-admin-only class="sidebar-link" type="button"><span>Reporte de caja</span></button>
       <button id="btnExportar" data-admin-only class="sidebar-link" type="button"><span>Exportar pedidos</span></button>
       <button id="btnGestionUsuarios" data-admin-only class="sidebar-link" type="button"><span>Cuentas y roles</span></button>
       <button id="btnCargaClientes" class="sidebar-link hidden" type="button"><span>Carga de clientes</span></button>
@@ -140,7 +142,7 @@
     </section>
     <section class="clients-table-wrap">
       <table class="clients-table">
-        <thead><tr><th>Cliente</th><th>Teléfono</th><th>Dirección</th><th>Compras</th><th>Total comprado</th><th>Última compra</th></tr></thead>
+        <thead><tr><th>Cliente</th><th>Teléfono</th><th>Dirección</th><th>Compras</th><th>Total comprado</th><th>Última compra</th><th>Acciones</th></tr></thead>
         <tbody id="tablaClientes"></tbody>
       </table>
       <p id="clientesSinResultados" class="client-empty hidden">No hay clientes que coincidan con la búsqueda.</p>
@@ -1640,6 +1642,26 @@
     </form>
   </dialog>
 
+  <dialog id="modalEditarCliente" class="client-dialog">
+    <form id="formEditarCliente">
+      <div class="dialog-header">
+        <div><h2>Editar cliente</h2><p>Actualiza los datos del cliente seleccionado.</p></div>
+        <button type="button" class="icon-button" data-close="modalEditarCliente"><i data-close="modalEditarCliente" class="fa-solid fa-xmark"></i></button>
+      </div>
+      <input id="editarClienteId" type="hidden" />
+      <div class="form-grid">
+        <label class="span-2">Nombre completo<input id="editarClienteNombre" required maxlength="120" autocomplete="off" /></label>
+        <label class="span-2">Teléfono (opcional)<input id="editarClienteTelefono" type="tel" maxlength="20" autocomplete="tel" /></label>
+        <label class="span-2">Dirección<input id="editarClienteDireccion" required maxlength="220" autocomplete="street-address" /></label>
+      </div>
+      <p id="errorEditarCliente" class="client-form-error hidden"></p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" data-close="modalEditarCliente">Cancelar</button>
+        <button id="btnGuardarEdicionCliente" type="submit" class="primary">Guardar cambios</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="modalCargaClientes" class="client-import-dialog">
     <div class="dialog-header">
       <div>
@@ -1723,7 +1745,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script type="module" src="app.js?v=34-gastos-pdf-20261107"></script>
+  <script type="module" src="app.js?v=37-fix-control-gastos-20261109"></script>
   </div>
 
 <script>

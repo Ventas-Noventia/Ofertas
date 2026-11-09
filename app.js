@@ -634,6 +634,7 @@ function puedeImportarClientes() {
 function aplicarPermisoClientes() {
   $("#btnNuevoCliente").classList.toggle("hidden", !puedeAgregarClientes());
   $("#btnCargaClientes").classList.toggle("hidden", !puedeImportarClientes());
+  $("#btnClientes")?.classList.toggle("hidden", perfilActual?.rol !== "admin");
 }
 
 function claveUnicaCliente(cliente) {
@@ -687,6 +688,10 @@ function renderPantallaClientes() {
       <td><span class="client-purchase-count">${compras.length}</span></td>
       <td><strong>${moneda(total)}</strong></td>
       <td>${ultima ? escapeHtml(fechaPedidoTexto(ultima)) : "Sin compras"}</td>
+      <td class="client-actions-cell">
+        <button type="button" class="secondary client-action-button" data-editar-cliente="${escapeHtml(cliente.id)}" title="Editar cliente"><i class="fa-solid fa-pen"></i></button>
+        <button type="button" class="danger client-action-button" data-eliminar-cliente="${escapeHtml(cliente.id)}" title="Eliminar cliente"><i class="fa-solid fa-trash"></i></button>
+      </td>
     </tr>`).join("");
   $("#clientesSinResultados").classList.toggle("hidden", visibles.length > 0);
   $("#clientesTotalRegistrados").textContent = clientesFrecuentes.length;
@@ -695,11 +700,85 @@ function renderPantallaClientes() {
 }
 
 function mostrarVistaClientes() {
+  if (perfilActual?.rol !== "admin") {
+    alert("Solo los administradores pueden consultar la sección de clientes.");
+    mostrarVistaPedidos();
+    return;
+  }
   modalCaja.classList.add("hidden");
   $("#vistaPedidos")?.classList.add("hidden");
   $("#vistaWhatsapp")?.classList.add("hidden");
   $("#vistaClientes")?.classList.remove("hidden");
   renderPantallaClientes();
+}
+
+function abrirEdicionCliente(clienteId) {
+  if (perfilActual?.rol !== "admin") return;
+  const cliente = clientesFrecuentes.find(item => item.id === clienteId);
+  if (!cliente) return alert("No se encontró el cliente seleccionado.");
+  $("#editarClienteId").value = cliente.id;
+  $("#editarClienteNombre").value = cliente.nombre || "";
+  $("#editarClienteTelefono").value = cliente.telefono || "";
+  $("#editarClienteDireccion").value = cliente.direccion || "";
+  $("#errorEditarCliente").classList.add("hidden");
+  $("#modalEditarCliente").showModal();
+}
+
+async function guardarEdicionCliente(event) {
+  event.preventDefault();
+  if (perfilActual?.rol !== "admin") return;
+  const id = $("#editarClienteId").value;
+  const nombre = $("#editarClienteNombre").value.trim();
+  const telefono = $("#editarClienteTelefono").value.trim();
+  const direccion = $("#editarClienteDireccion").value.trim();
+  const error = $("#errorEditarCliente");
+  const duplicado = clientesFrecuentes.find(cliente =>
+    cliente.id !== id && claveUnicaCliente(cliente) === claveUnicaCliente({ nombre, telefono, direccion })
+  );
+  if (!nombre || !direccion) return;
+  if (duplicado) {
+    error.textContent = "Ya existe otro cliente con esos datos.";
+    error.classList.remove("hidden");
+    return;
+  }
+  const boton = $("#btnGuardarEdicionCliente");
+  boton.disabled = true;
+  boton.textContent = "Guardando…";
+  try {
+    await updateDoc(doc(db, "clientes", id), {
+      nombre, telefono, direccion,
+      nombreNormalizado: normalizarTexto(nombre),
+      actualizadoEn: serverTimestamp(),
+      actualizadoPorUid: usuarioActual?.uid || "",
+      actualizadoPorNombre: perfilActual?.nombre || usuarioActual?.email || ""
+    });
+    $("#modalEditarCliente").close();
+  } catch (e) {
+    console.error(e);
+    error.textContent = "No se pudo actualizar el cliente. Revisa los permisos de Firestore.";
+    error.classList.remove("hidden");
+  } finally {
+    boton.disabled = false;
+    boton.textContent = "Guardar cambios";
+  }
+}
+
+async function eliminarCliente(clienteId) {
+  if (perfilActual?.rol !== "admin") return;
+  const cliente = clientesFrecuentes.find(item => item.id === clienteId);
+  if (!cliente) return;
+  if (!confirm(`¿Deseas eliminar a ${cliente.nombre || "este cliente"}? Sus ventas históricas se conservarán.`)) return;
+  try {
+    await updateDoc(doc(db, "clientes", clienteId), {
+      activo: false,
+      eliminadoEn: serverTimestamp(),
+      eliminadoPorUid: usuarioActual?.uid || "",
+      eliminadoPorNombre: perfilActual?.nombre || usuarioActual?.email || ""
+    });
+  } catch (e) {
+    console.error(e);
+    alert("No se pudo eliminar el cliente. Revisa los permisos de Firestore.");
+  }
 }
 
 function ocultarResultadosClientes() {
@@ -1606,6 +1685,11 @@ async function abrirReporteCaja() {
 
   const boton = $("#btnReporteCaja");
 
+  if (!boton) {
+    alert("No se encontró el acceso al control de gastos. Actualiza index.html y app.js juntos.");
+    return;
+  }
+
   if (boton.disabled) return;
 
   boton.disabled = true;
@@ -1626,14 +1710,9 @@ async function abrirReporteCaja() {
       metodoPagoTexto
     });
 
-    // Evita abrir el reporte si durante la carga
-    // se cerró la sesión o se eligió otra sección.
-    if (
-      perfilActual?.rol !== "admin" ||
-      !boton.classList.contains("active")
-    ) {
-      return;
-    }
+    // La navegación no debe depender de la clase visual "active".
+    // Solo se cancela si la sesión dejó de ser de administrador.
+    if (perfilActual?.rol !== "admin") return;
 
     const modalDetalleCaja = $("#modalDetallePedidoCaja");
     const btnCerrarDetalleCaja = $("#btnCerrarDetallePedidoCaja");
@@ -1698,6 +1777,7 @@ async function abrirReporteCaja() {
 
     $("#vistaPedidos").classList.add("hidden");
     $("#vistaWhatsapp").classList.add("hidden");
+    $("#vistaClientes")?.classList.add("hidden");
     modalCaja.classList.remove("hidden");
 
   } catch (error) {
@@ -5352,6 +5432,13 @@ $("#btnPanelPrincipal")?.addEventListener("click", mostrarVistaPedidos);
 $("#btnClientes")?.addEventListener("click", mostrarVistaClientes);
 $("#btnVolverInicioClientes")?.addEventListener("click", mostrarVistaPedidos);
 $("#buscadorClientes")?.addEventListener("input", renderPantallaClientes);
+$("#tablaClientes")?.addEventListener("click", event => {
+  const editar = event.target.closest("[data-editar-cliente]");
+  const eliminar = event.target.closest("[data-eliminar-cliente]");
+  if (editar) abrirEdicionCliente(editar.dataset.editarCliente);
+  if (eliminar) eliminarCliente(eliminar.dataset.eliminarCliente);
+});
+$("#formEditarCliente")?.addEventListener("submit", guardarEdicionCliente);
 $("#btnNuevoClientePantalla")?.addEventListener("click", () => {
   abrirNuevoCliente();
 });
